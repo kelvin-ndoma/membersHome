@@ -1,5 +1,6 @@
-"use client"
+// lib/auth/client.ts
+'use client';
 
-import { signIn as nextAuthSignIn, signOut as nextAuthSignOut } from "next-auth/react"
+import { signIn, signOut } from 'next-auth/react';
 
-export { nextAuthSignIn as signIn, nextAuthSignOut as signOut }
+export { signIn, signOut };

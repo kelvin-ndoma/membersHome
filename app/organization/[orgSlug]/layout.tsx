@@ -1,4 +1,4 @@
-// app/organization/[orgSlug]/layout.tsx
+// app/organization/[orgSlug]/layout.tsx - Updated
 import { redirect } from 'next/navigation';
 import { getServerSession } from '@/lib/auth';
 import { prisma } from '@/lib/db';
@@ -19,16 +19,22 @@ export default async function OrganizationLayout({
     const session = await getServerSession();
     
     if (!session?.user?.email) {
-      redirect('/'); // Redirect to home/login page
+      redirect('/');
     }
 
-    // Get user
+    // Get user with platform role
     const user = await prisma.user.findUnique({
       where: { email: session.user.email },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        platformRole: true,
+      },
     });
 
     if (!user) {
-      redirect('/'); // Redirect to home/login page
+      redirect('/');
     }
 
     // Get organization
@@ -37,7 +43,7 @@ export default async function OrganizationLayout({
     });
 
     if (!organization) {
-      redirect('/organization'); // Redirect to organizations list
+      redirect('/organization');
     }
 
     // Check membership
@@ -47,29 +53,50 @@ export default async function OrganizationLayout({
         organizationId: organization.id,
         status: 'ACTIVE',
       },
+      include: {
+        house: {
+          select: {
+            id: true,
+            name: true,
+            slug: true,
+          },
+        },
+      },
     });
 
     if (!membership) {
-      redirect('/organization'); // Redirect to organizations list
+      redirect('/organization');
     }
 
     return (
-      <div className="min-h-screen bg-gray-50 flex">
-        <Sidebar 
-          orgSlug={orgSlug}
-          userRole={membership.organizationRole}
-        />
-        
-        <div className="flex-1 flex flex-col">
-          <Header 
-            orgName={organization.name}
+      <div className="min-h-screen bg-gray-50">
+        {/* Fixed Sidebar */}
+        <div className="fixed left-0 top-0 h-screen z-30 w-64">
+          <Sidebar 
             orgSlug={orgSlug}
             userRole={membership.organizationRole}
-            userEmail={user.email}
-            userName={user.name || undefined}
+            currentHouseSlug={membership.house?.slug}
+            userPlatformRole={user.platformRole}
           />
+        </div>
+        
+        {/* Main Content Area */}
+        <div className="pl-64">
+          {/* Fixed Header */}
+          <div className="sticky top-0 z-20 bg-white">
+            <Header 
+              orgName={organization.name}
+              orgSlug={orgSlug}
+              userRole={membership.organizationRole}
+              userEmail={user.email}
+              userName={user.name || undefined}
+              currentHouseId={membership.house?.id}
+              userPlatformRole={user.platformRole}
+            />
+          </div>
           
-          <main className="flex-1 p-4 md:p-6 overflow-auto">
+          {/* Scrollable Main Content */}
+          <main className="min-h-[calc(100vh-5rem)] p-4 md:p-6">
             <div className="max-w-7xl mx-auto">
               {children}
             </div>
@@ -79,6 +106,6 @@ export default async function OrganizationLayout({
     );
   } catch (error) {
     console.error('Layout error:', error);
-    redirect('/'); // Redirect to home/login page on error
+    redirect('/');
   }
 }

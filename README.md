@@ -133,3 +133,24 @@ app/
         │   └── page.tsx
         └── terms/
             └── page.tsx
+
+            
+Feature	PLATFORM_ADMIN	ORG_OWNER	ORG_ADMIN	MEMBER	HOUSE_ADMIN	HOUSE_MEMBER
+Organization						
+Create Org	✅	❌	❌	❌	❌	❌
+Delete Org	✅	❌	❌	❌	❌	❌
+Update Settings	✅	✅	❌	❌	❌	❌
+View Org	✅	✅	✅	✅	✅	✅
+House						
+Create House	✅	❌	❌	❌	❌	❌
+Delete House	✅	✅	❌	❌	❌	❌
+Update House	✅	✅	❌	❌	✅*	❌
+View House	✅	✅	✅	✅	✅	✅
+People/CRM						
+Add Members	✅	✅	✅	❌	✅*	❌
+Remove Members	✅	✅	✅	❌	✅*	❌
+View Members	✅	✅	✅	✅	✅*	✅*
+Commerce						
+Create Invoices	✅	✅	✅	❌	❌	❌
+View Invoices	✅	✅	✅	✅	✅*	❌
+Process Payments	✅	✅	✅	❌	❌	❌
