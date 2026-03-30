@@ -1,75 +1,54 @@
-import { NextRequest, NextResponse } from "next/server"
-import { prisma } from "@/lib/db"
+import { NextResponse } from "next/server"
 import bcrypt from "bcryptjs"
-import { signIn } from "next-auth/react"
+import { prisma } from "@/lib/db"
+import { registerUserSchema } from "@/lib/validations/user"
 
-export async function POST(request: NextRequest) {
+export async function POST(req: Request) {
   try {
-    const body = await request.json()
-    const { name, email, password } = body
-
-    // Validate
-    if (!name || !email || !password) {
+    const body = await req.json()
+    
+    const validatedData = registerUserSchema.safeParse(body)
+    
+    if (!validatedData.success) {
       return NextResponse.json(
-        { error: "Missing required fields" },
+        { error: "Invalid input", details: validatedData.error.errors },
         { status: 400 }
       )
     }
 
-    if (password.length < 8) {
-      return NextResponse.json(
-        { error: "Password must be at least 8 characters" },
-        { status: 400 }
-      )
-    }
+    const { email, password, name } = validatedData.data
 
-    // Check if user exists
     const existingUser = await prisma.user.findUnique({
-      where: { email }
+      where: { email },
     })
 
     if (existingUser) {
       return NextResponse.json(
-        { error: "User already exists" },
+        { error: "User with this email already exists" },
         { status: 400 }
       )
     }
 
-    // Hash password
-    const hashedPassword = await bcrypt.hash(password, 12)
+    const hashedPassword = await bcrypt.hash(password, 10)
 
-    // Create user
     const user = await prisma.user.create({
       data: {
-        name,
         email,
         passwordHash: hashedPassword,
-      }
-    })
-
-    // Create audit log for registration
-    await prisma.auditLog.create({
-      data: {
-        action: "user.register",
-        entityType: "User",
-        entityId: user.id,
-        userId: user.id,
-        userEmail: user.email,
-        metadata: {
-          source: "web",
-        },
+        name,
+        platformRole: "USER",
+      },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        platformRole: true,
+        createdAt: true,
       },
     })
 
     return NextResponse.json(
-      { 
-        message: "User created successfully",
-        user: {
-          id: user.id,
-          email: user.email,
-          name: user.name
-        }
-      },
+      { message: "User created successfully", user },
       { status: 201 }
     )
   } catch (error) {

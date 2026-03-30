@@ -1,165 +1,76 @@
-import { prisma } from "@/lib/db"
-import { 
-  ROLE_PERMISSIONS, 
-  PlatformPermission, 
-  OrganizationPermission, 
-  HousePermission, 
-  MemberPermission 
-} from "./roles"
+import { PlatformRole, OrganizationRole, HouseRole } from "@prisma/client"
+import { permissions as rolePermissions, houseRoleHierarchy, organizationRoleHierarchy, canManageRole, canManageOrgRole, UserPermissionContext } from "./roles"
+import { getTicketPermissions, canPurchaseTicket, calculateTicketPrice } from "./ticket-permissions"
 
-export type Permission = 
-  | PlatformPermission 
-  | OrganizationPermission 
-  | HousePermission 
-  | MemberPermission
+export type { UserPermissionContext }
 
-// Type guards to check permission types
-export function isPlatformPermission(permission: Permission): permission is PlatformPermission {
-  return Object.values(PlatformPermission).includes(permission as PlatformPermission)
-}
-
-export function isOrganizationPermission(permission: Permission): permission is OrganizationPermission {
-  return Object.values(OrganizationPermission).includes(permission as OrganizationPermission)
-}
-
-export function isHousePermission(permission: Permission): permission is HousePermission {
-  return Object.values(HousePermission).includes(permission as HousePermission)
-}
-
-export function isMemberPermission(permission: Permission): permission is MemberPermission {
-  return Object.values(MemberPermission).includes(permission as MemberPermission)
-}
-
-export async function hasPlatformPermission(
-  userId: string,
-  permission: PlatformPermission
-): Promise<boolean> {
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    select: { platformRole: true }
-  })
-
-  if (!user) return false
+export function hasPermission(
+  user: UserPermissionContext,
+  resource: string,
+  action: string
+): boolean {
+  const permissionKey = `${resource}:${action}` as keyof typeof rolePermissions
   
-  if (user.platformRole === "PLATFORM_ADMIN") {
-    return ROLE_PERMISSIONS.PLATFORM_ADMIN.includes(permission)
-  }
-
-  return false
-}
-
-export async function hasOrganizationPermission(
-  userId: string,
-  organizationId: string,
-  permission: OrganizationPermission
-): Promise<boolean> {
-  const membership = await prisma.membership.findFirst({
-    where: {
-      userId,
-      organizationId,
-      status: "ACTIVE",
-    },
-    select: { organizationRole: true }
-  })
-
-  if (!membership) return false
-
-  const role = membership.organizationRole
+  const permission = rolePermissions[permissionKey]
+  if (!permission) return false
   
-  if (role === "ORG_OWNER") {
-    return ROLE_PERMISSIONS.ORG_OWNER.includes(permission)
-  }
-  
-  if (role === "ORG_ADMIN") {
-    return ROLE_PERMISSIONS.ORG_ADMIN.includes(permission)
-  }
-
-  return false
+  return permission(user)
 }
 
-export async function hasHousePermission(
-  userId: string,
-  organizationId: string,
-  houseId: string,
-  permission: HousePermission | MemberPermission
-): Promise<boolean> {
-  const membership = await prisma.membership.findFirst({
-    where: {
-      userId,
-      organizationId,
-      houseId,
-      status: "ACTIVE",
-    },
-    select: { houseRole: true, organizationRole: true }
-  })
-
-  if (!membership) return false
-
-  // House admins get house permissions
-  if (membership.houseRole === "HOUSE_ADMIN") {
-    return ROLE_PERMISSIONS.HOUSE_ADMIN.includes(permission as HousePermission)
-  }
-
-  // House members get member permissions
-  if (membership.houseRole === "HOUSE_MEMBER") {
-    return ROLE_PERMISSIONS.HOUSE_MEMBER.includes(permission as MemberPermission)
-  }
-
-  // Organization admins/owners get all house permissions
-  if (membership.organizationRole === "ORG_ADMIN" || membership.organizationRole === "ORG_OWNER") {
-    return true // Full access
-  }
-
-  return false
+export function canManagePlatform(user: UserPermissionContext): boolean {
+  return rolePermissions["platform:manage"](user)
 }
 
-export async function requirePermission(
-  userId: string,
-  permission: Permission,
-  organizationId?: string,
-  houseId?: string
-): Promise<void> {
-  let hasPermission = false
-
-  if (organizationId && houseId) {
-    // For house-level permissions, check if it's a valid house/member permission
-    if (isHousePermission(permission) || isMemberPermission(permission)) {
-      hasPermission = await hasHousePermission(userId, organizationId, houseId, permission)
-    } else {
-      throw new Error(`Invalid permission type for house context: ${permission}`)
-    }
-  } else if (organizationId) {
-    // For organization-level permissions, check if it's a valid organization permission
-    if (isOrganizationPermission(permission)) {
-      hasPermission = await hasOrganizationPermission(userId, organizationId, permission)
-    } else {
-      throw new Error(`Invalid permission type for organization context: ${permission}`)
-    }
-  } else {
-    // For platform-level permissions, check if it's a valid platform permission
-    if (isPlatformPermission(permission)) {
-      hasPermission = await hasPlatformPermission(userId, permission)
-    } else {
-      throw new Error(`Invalid permission type for platform context: ${permission}`)
-    }
-  }
-
-  if (!hasPermission) {
-    throw new Error("Permission denied")
-  }
+export function canViewAdminPanel(user: UserPermissionContext): boolean {
+  return rolePermissions["admin:view"](user)
 }
 
-// Helper function to check permission based on context
-export async function checkPermission(
-  userId: string,
-  permission: Permission,
-  organizationId?: string,
-  houseId?: string
-): Promise<boolean> {
-  try {
-    await requirePermission(userId, permission, organizationId, houseId)
-    return true
-  } catch {
-    return false
-  }
+export function canManageOrganization(user: UserPermissionContext): boolean {
+  return rolePermissions["organization:manage"](user)
+}
+
+export function canManageMembers(user: UserPermissionContext): boolean {
+  return rolePermissions["members:manage"](user)
+}
+
+export function canCreateHouses(user: UserPermissionContext): boolean {
+  return rolePermissions["houses:create"](user)
+}
+
+export function canManageHouse(user: UserPermissionContext): boolean {
+  return rolePermissions["house:manage"](user)
+}
+
+export function canManageHouseMembers(user: UserPermissionContext): boolean {
+  return rolePermissions["house:members:manage"](user)
+}
+
+export function canCreateEvents(user: UserPermissionContext): boolean {
+  return rolePermissions["events:create"](user)
+}
+
+export function canSellTickets(user: UserPermissionContext): boolean {
+  return rolePermissions["tickets:sell"](user)
+}
+
+export function canValidateTickets(user: UserPermissionContext): boolean {
+  return rolePermissions["tickets:validate"](user)
+}
+
+export function canViewReports(user: UserPermissionContext): boolean {
+  return rolePermissions["reports:view"](user)
+}
+
+export function canManageHouseSettings(user: UserPermissionContext): boolean {
+  return rolePermissions["house:settings"](user)
+}
+
+export {
+  getTicketPermissions,
+  canPurchaseTicket,
+  calculateTicketPrice,
+  houseRoleHierarchy,
+  organizationRoleHierarchy,
+  canManageRole,
+  canManageOrgRole,
 }

@@ -1,139 +1,188 @@
-// app/organization/[orgSlug]/commerce/invoices/page.tsx
-import { prisma } from '@/lib/db';
-import { InvoicesTable } from '@/components/commerce/InvoicesTable';
-import Link from 'next/link';
+import { Suspense } from "react"
+import Link from "next/link"
+import { getServerSession } from "next-auth"
+import { redirect } from "next/navigation"
+import { authOptions } from "@/lib/auth/config"
+import { prisma } from "@/lib/db"
+import { Button } from "@/components/ui/Button"
+import { Input } from "@/components/ui/Input"
+import { InvoicesTable } from "@/components/commerce/InvoicesTable"
+import { Plus, Search } from "lucide-react"
 
 interface InvoicesPageProps {
-  params: Promise<{ orgSlug: string }>;
+  params: Promise<{ orgSlug: string }>
+  searchParams: Promise<{ page?: string; status?: string; search?: string }>
 }
 
-export default async function InvoicesPage({ params }: InvoicesPageProps) {
-  const { orgSlug } = await params;
-  
-  // Get organization first
+export default async function InvoicesPage({ params, searchParams }: InvoicesPageProps) {
+  const session = await getServerSession(authOptions)
+  const { orgSlug } = await params
+  const { page = "1", status = "all", search = "" } = await searchParams
+
+  if (!session) {
+    redirect("/auth/login")
+  }
+
+  const membership = await prisma.membership.findFirst({
+    where: {
+      userId: session.user.id,
+      organization: { slug: orgSlug },
+      status: "ACTIVE",
+    },
+  })
+
+  if (!membership) {
+    redirect("/organization")
+  }
+
   const organization = await prisma.organization.findUnique({
     where: { slug: orgSlug },
     select: { id: true },
-  });
+  })
 
   if (!organization) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <h1 className="text-2xl font-bold text-red-600">Organization not found</h1>
-          <p className="text-gray-600 mt-2">The organization doesn't exist or you don't have access.</p>
-        </div>
-      </div>
-    );
+    redirect("/organization")
   }
 
-  const payments = await prisma.payment.findMany({
-    where: {
-      organizationId: organization.id,
-    },
-    include: {
+  const pageNum = parseInt(page)
+  const pageSize = 10
+
+  const where: any = {
+    organizationId: organization.id,
+  }
+
+  if (status !== "all") {
+    where.status = status
+  }
+
+  if (search) {
+    where.OR = [
+      { invoiceNumber: { contains: search, mode: "insensitive" } },
+      { membership: { user: { name: { contains: search, mode: "insensitive" } } } },
+    ]
+  }
+
+  const [invoices, total] = await Promise.all([
+    prisma.invoice.findMany({
+      where,
+      skip: (pageNum - 1) * pageSize,
+      take: pageSize,
+      orderBy: { createdAt: "desc" },
+      include: {
+        membership: {
+          include: {
+            user: {
+              select: { name: true, email: true },
+            },
+          },
+        },
+      },
+    }),
+    prisma.invoice.count({ where }),
+  ])
+
+  const formattedInvoices = invoices.map((invoice) => ({
+    id: invoice.id,
+    invoiceNumber: invoice.invoiceNumber,
+    amount: invoice.amount,
+    currency: invoice.currency,
+    description: invoice.description,
+    dueDate: invoice.dueDate,
+    status: invoice.status,
+    paidAt: invoice.paidAt,
+    createdAt: invoice.createdAt,
+    membership: {
       user: {
-        select: { 
-          id: true,
-          name: true, 
-          email: true 
-        },
-      },
-      house: {
-        select: { 
-          id: true,
-          name: true 
-        },
+        name: invoice.membership.user.name || "",
+        email: invoice.membership.user.email,
       },
     },
-    orderBy: { createdAt: 'desc' },
-  });
+  }))
 
-  // Transform payments to match Invoice interface
-  const invoices = payments.map(payment => ({
-    id: payment.id,
-    amount: payment.amount,
-    currency: payment.currency,
-    status: payment.status,
-    description: payment.description || undefined, // Convert null to undefined
-    createdAt: payment.createdAt.toISOString(),
-    user: {
-      name: payment.user.name || undefined,
-      email: payment.user.email,
-    },
-    house: payment.house ? {
-      name: payment.house.name,
-    } : undefined,
-  }));
-
-  const stats = {
-    totalRevenue: payments.reduce((sum, inv) => sum + inv.amount, 0),
-    paidCount: payments.filter(inv => inv.status === 'SUCCEEDED').length,
-    pendingCount: payments.filter(inv => inv.status === 'PENDING').length,
-    failedCount: payments.filter(inv => inv.status === 'FAILED').length,
-  };
+  const totalPages = Math.ceil(total / pageSize)
+  const canManage = membership.organizationRole === "ORG_ADMIN" || membership.organizationRole === "ORG_OWNER"
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="flex items-center justify-between mb-8">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900">Invoices</h1>
-            <p className="text-gray-600 mt-2">Manage and track all invoices</p>
-          </div>
-          <Link
-            href={`/organization/${orgSlug}/commerce/invoices/create`}
-            className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
-          >
-            Create Invoice
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Invoices</h1>
+          <p className="text-muted-foreground">Manage all invoices for your organization</p>
+        </div>
+        {canManage && (
+          <Link href={`/organization/${orgSlug}/commerce/invoices/create`}>
+            <Button>
+              <Plus className="mr-2 h-4 w-4" />
+              Create Invoice
+            </Button>
           </Link>
-        </div>
-        
-        {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-          <div className="bg-white p-6 rounded-lg shadow">
-            <p className="text-sm font-medium text-gray-600">Total Revenue</p>
-            <p className="text-2xl font-bold text-gray-900 mt-2">
-              ${stats.totalRevenue.toFixed(2)}
-            </p>
-          </div>
-          <div className="bg-white p-6 rounded-lg shadow">
-            <p className="text-sm font-medium text-gray-600">Paid Invoices</p>
-            <p className="text-2xl font-bold text-gray-900 mt-2">
-              {stats.paidCount}
-            </p>
-            <p className="text-sm text-green-600 mt-1">
-              {payments.length > 0 ? `${Math.round((stats.paidCount / payments.length) * 100)}% success rate` : 'No invoices'}
-            </p>
-          </div>
-          <div className="bg-white p-6 rounded-lg shadow">
-            <p className="text-sm font-medium text-gray-600">Pending</p>
-            <p className="text-2xl font-bold text-gray-900 mt-2">
-              {stats.pendingCount}
-            </p>
-            <p className="text-sm text-yellow-600 mt-1">
-              Awaiting payment
-            </p>
-          </div>
-          <div className="bg-white p-6 rounded-lg shadow">
-            <p className="text-sm font-medium text-gray-600">Failed</p>
-            <p className="text-2xl font-bold text-gray-900 mt-2">
-              {stats.failedCount}
-            </p>
-            <p className="text-sm text-red-600 mt-1">
-              Requires attention
-            </p>
-          </div>
-        </div>
-        
-        {/* Invoices Table */}
-        <div className="bg-white rounded-lg shadow">
-          <InvoicesTable 
-            invoices={invoices}
-            orgSlug={orgSlug}
-          />
-        </div>
+        )}
       </div>
+
+      <div className="flex gap-2">
+        <form method="GET" className="flex-1">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              name="search"
+              placeholder="Search by invoice number or customer..."
+              defaultValue={search}
+              className="pl-9"
+            />
+          </div>
+        </form>
+        <select
+          name="status"
+          className="rounded-md border border-input bg-background px-3 py-2 text-sm"
+          defaultValue={status}
+          onChange={(e) => {
+            const url = new URL(window.location.href)
+            url.searchParams.set("status", e.target.value)
+            window.location.href = url.toString()
+          }}
+        >
+          <option value="all">All Status</option>
+          <option value="DRAFT">Draft</option>
+          <option value="SENT">Sent</option>
+          <option value="PENDING">Pending</option>
+          <option value="PAID">Paid</option>
+          <option value="OVERDUE">Overdue</option>
+          <option value="CANCELLED">Cancelled</option>
+        </select>
+      </div>
+
+      <InvoicesTable
+        invoices={formattedInvoices}
+        canManage={canManage}
+        onView={(id) => {
+          window.location.href = `/organization/${orgSlug}/commerce/invoices/${id}`
+        }}
+        onDownload={(id) => {
+          window.location.href = `/organization/${orgSlug}/commerce/invoices/${id}/pdf`
+        }}
+        onSend={(id) => {
+          fetch(`/api/organizations/${orgSlug}/commerce/invoices/${id}/send`, { method: "POST" })
+            .then(() => window.location.reload())
+        }}
+      />
+
+      {totalPages > 1 && (
+        <div className="flex justify-center gap-2">
+          {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
+            <Link
+              key={p}
+              href={`?page=${p}&status=${status}&search=${search}`}
+              className={`px-3 py-1 rounded ${
+                p === pageNum
+                  ? "bg-primary text-primary-foreground"
+                  : "bg-muted hover:bg-muted/80"
+              }`}
+            >
+              {p}
+            </Link>
+          ))}
+        </div>
+      )}
     </div>
-  );
+  )
 }

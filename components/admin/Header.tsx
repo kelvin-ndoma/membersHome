@@ -1,146 +1,107 @@
-// components/admin/Header.tsx - Add signOut
-'use client';
+"use client"
 
-import { Bell, Settings, HelpCircle, Building, Search, User, LogOut } from 'lucide-react';
-import { useState } from 'react';
-import Link from 'next/link';
-import { signOut } from 'next-auth/react'; // Add this import
-import { useRouter } from 'next/navigation'; // Add this import
+import { useSession, signOut } from "next-auth/react"
+import Link from "next/link"
+import { usePathname } from "next/navigation"
+import { Menu, Bell, User, LogOut, Settings, ChevronDown } from "lucide-react"
+import { Button } from "@/components/ui/Button"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/Avatar"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/Dropdown"
 
-interface AdminHeaderProps {
-  userName?: string;
-  userEmail: string;
+interface HeaderProps {
+  onMenuClick?: () => void
 }
 
-export default function AdminHeader({ userName, userEmail }: AdminHeaderProps) {
-  const router = useRouter();
-  const [showUserMenu, setShowUserMenu] = useState(false);
+export function Header({ onMenuClick }: HeaderProps) {
+  const { data: session } = useSession()
+  const pathname = usePathname()
 
-  const getUserInitials = () => {
-    if (userName) {
-      return userName
-        .split(' ')
-        .map(n => n[0])
-        .join('')
+  const getPageTitle = () => {
+    if (pathname === "/admin") return "Dashboard"
+    if (pathname === "/admin/organizations") return "Organizations"
+    if (pathname === "/admin/users") return "Users"
+    if (pathname === "/admin/tickets") return "Tickets"
+    if (pathname === "/admin/billing") return "Billing"
+    if (pathname === "/admin/audit-logs") return "Audit Logs"
+    if (pathname === "/admin/reports") return "Reports"
+    if (pathname === "/admin/settings") return "Settings"
+    if (pathname.startsWith("/admin/organizations/")) return "Organization Details"
+    if (pathname.startsWith("/admin/users/")) return "User Details"
+    return "Admin Panel"
+  }
+
+  const userInitials = session?.user?.name
+    ? session.user.name
+        .split(" ")
+        .map((n) => n[0])
+        .join("")
         .toUpperCase()
-        .slice(0, 2);
-    }
-    return userEmail.slice(0, 2).toUpperCase();
-  };
-
-  const handleSignOut = async () => {
-    setShowUserMenu(false);
-    await signOut({ 
-      redirect: true,
-      callbackUrl: '/'
-    });
-  };
+        .slice(0, 2)
+    : "AD"
 
   return (
-    <header className="bg-white border-b border-gray-200 w-full">
-      <div className="px-6 py-4">
-        <div className="flex items-center justify-between">
-          {/* Left: Page Title */}
-          <div className="flex-1">
-            <h1 className="text-xl font-bold text-gray-900">
-              Platform Administration
-            </h1>
-            <p className="text-sm text-gray-600 mt-1">
-              Manage organizations, users, and platform settings
-            </p>
-          </div>
+    <header className="h-16 border-b bg-background">
+      <div className="flex h-full items-center justify-between px-4 md:px-6">
+        <div className="flex items-center gap-4">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="md:hidden"
+            onClick={onMenuClick}
+          >
+            <Menu className="h-5 w-5" />
+          </Button>
+          <h1 className="text-lg font-semibold md:text-xl">{getPageTitle()}</h1>
+        </div>
 
-          {/* Right: Admin Actions */}
-          <div className="flex items-center space-x-4 ml-4 flex-shrink-0">
-            {/* Search */}
-            <div className="relative hidden md:block">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-5 w-5" />
-              <input
-                type="text"
-                placeholder="Search organizations, users..."
-                className="pl-10 pr-4 py-2 w-64 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-              />
-            </div>
-
-            {/* Notifications */}
-            <button className="relative p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg">
-              <Bell className="h-5 w-5" />
-              <span className="absolute top-1 right-1 h-2 w-2 bg-red-500 rounded-full"></span>
-            </button>
-
-            {/* Help */}
-            <button className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg">
-              <HelpCircle className="h-5 w-5" />
-            </button>
-
-            {/* User Menu */}
-            <div className="relative">
-              <button
-                onClick={() => setShowUserMenu(!showUserMenu)}
-                className="flex items-center space-x-3 p-2 hover:bg-gray-100 rounded-lg"
+        <div className="flex items-center gap-2 md:gap-4">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" className="flex items-center gap-2 px-2">
+                <Avatar className="h-8 w-8">
+                  <AvatarImage src={session?.user?.image || ""} />
+                  <AvatarFallback>{userInitials}</AvatarFallback>
+                </Avatar>
+                <span className="hidden md:inline-block">
+                  {session?.user?.name || "Admin"}
+                </span>
+                <ChevronDown className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuLabel>My Account</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem asChild>
+                <Link href="/admin/settings" className="cursor-pointer">
+                  <Settings className="mr-2 h-4 w-4" />
+                  Settings
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <Link href="/" className="cursor-pointer">
+                  <User className="mr-2 h-4 w-4" />
+                  View Site
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                onClick={() => signOut({ callbackUrl: "/" })}
+                className="cursor-pointer text-red-600"
               >
-                <div className="h-8 w-8 bg-purple-600 rounded-full flex items-center justify-center text-white font-medium">
-                  {getUserInitials()}
-                </div>
-                <div className="hidden md:block text-left">
-                  <p className="text-sm font-medium text-gray-900 truncate max-w-[120px]">
-                    {userName || 'Admin'}
-                  </p>
-                  <p className="text-xs text-gray-500 truncate max-w-[120px]">{userEmail}</p>
-                </div>
-              </button>
-
-              {/* User Dropdown Menu */}
-              {showUserMenu && (
-                <>
-                  <div 
-                    className="fixed inset-0 z-20" 
-                    onClick={() => setShowUserMenu(false)}
-                  />
-                  
-                  <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 z-30">
-                    <div className="py-2">
-                      <div className="px-4 py-2 border-b border-gray-100">
-                        <p className="text-sm font-medium text-gray-900 truncate">
-                          {userName || 'Admin'}
-                        </p>
-                        <p className="text-xs text-gray-500 truncate">{userEmail}</p>
-                        <span className="inline-block mt-1 px-2 py-0.5 text-xs bg-purple-100 text-purple-800 rounded-full">
-                          Platform Admin
-                        </span>
-                      </div>
-                      <Link
-                        href="/admin/profile"
-                        className="flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                        onClick={() => setShowUserMenu(false)}
-                      >
-                        <User className="h-4 w-4 mr-2" />
-                        Admin Profile
-                      </Link>
-                      <Link
-                        href="/"
-                        className="flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                        onClick={() => setShowUserMenu(false)}
-                      >
-                        <Building className="h-4 w-4 mr-2" />
-                        Back to Platform
-                      </Link>
-                      {/* ADD SIGN OUT BUTTON */}
-                      <button
-                        onClick={handleSignOut}
-                        className="flex items-center w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-gray-100 border-t border-gray-100"
-                      >
-                        <LogOut className="h-4 w-4 mr-2" />
-                        Sign out
-                      </button>
-                    </div>
-                  </div>
-                </>
-              )}
-            </div>
-          </div>
+                <LogOut className="mr-2 h-4 w-4" />
+                Sign Out
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
     </header>
-  );
+  )
 }

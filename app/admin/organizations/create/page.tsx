@@ -1,220 +1,397 @@
-// app/admin/organizations/create/page.tsx
-'use client';
+"use client"
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { Building, UserPlus, ArrowLeft } from 'lucide-react';
-import Link from 'next/link';
+import { useState, useEffect } from "react"
+import { useRouter } from "next/navigation"
+import { useForm } from "react-hook-form"
+import { zodResolver } from "@hookform/resolvers/zod"
+import { z } from "zod"
+import { Button } from "@/components/ui/Button"
+import { Input } from "@/components/ui/Input"
+import { Textarea } from "@/components/ui/Textarea"
+import { Label } from "@/components/ui/Label"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/Select"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/Card"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/Tabs"
+import { toast } from "sonner"
+import { Building2, Globe, FileText, Loader2, RefreshCw, UserPlus, Mail } from "lucide-react"
 
-export default function CreateOrganizationPage() {
-  const router = useRouter();
-  const [loading, setLoading] = useState(false);
-  const [formData, setFormData] = useState({
-    name: '',
-    slug: '',
-    description: '',
-    plan: 'STARTER' as 'STARTER' | 'PROFESSIONAL' | 'ENTERPRISE',
-    adminEmail: '',
-    adminName: '',
-  });
+const createOrgSchema = z.object({
+  name: z.string()
+    .min(2, "Name must be at least 2 characters")
+    .max(100, "Name must be less than 100 characters"),
+  slug: z.string()
+    .min(3, "Slug must be at least 3 characters")
+    .max(50, "Slug must be less than 50 characters")
+    .regex(/^[a-z0-9-]+$/, "Slug can only contain lowercase letters, numbers, and hyphens"),
+  description: z.string().max(500, "Description must be less than 500 characters").optional(),
+  website: z.string().url("Must be a valid URL").optional().or(z.literal("")),
+  plan: z.enum(["FREE", "STARTER", "PROFESSIONAL", "ENTERPRISE"]).default("FREE"),
+  billingEmail: z.string().email("Must be a valid email").optional().or(z.literal("")),
+})
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
+type CreateOrgData = z.infer<typeof createOrgSchema>
 
-    try {
-      const response = await fetch('/api/admin/organizations', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData),
-      });
+interface User {
+  id: string
+  name: string | null
+  email: string
+  platformRole: string
+}
 
-      if (response.ok) {
-        const data = await response.json();
-        router.push(`/admin/organizations/${data.slug}`);
-      } else {
-        const error = await response.json();
-        alert(error.error || 'Failed to create organization');
-      }
-    } catch (error) {
-      console.error('Error creating organization:', error);
-      alert('Failed to create organization');
-    } finally {
-      setLoading(false);
+export default function AdminCreateOrganizationPage() {
+  const router = useRouter()
+  const [isLoading, setIsLoading] = useState(false)
+  const [users, setUsers] = useState<User[]>([])
+  const [loadingUsers, setLoadingUsers] = useState(true)
+  const [selectedOwnerType, setSelectedOwnerType] = useState<"existing" | "new">("existing")
+  const [selectedUserId, setSelectedUserId] = useState("")
+  const [ownerEmail, setOwnerEmail] = useState("")
+  const [ownerName, setOwnerName] = useState("")
+
+  const {
+    register,
+    handleSubmit,
+    setValue,
+    watch,
+    formState: { errors },
+  } = useForm<CreateOrgData>({
+    resolver: zodResolver(createOrgSchema),
+    defaultValues: {
+      name: "",
+      slug: "",
+      description: "",
+      website: "",
+      plan: "FREE",
+      billingEmail: "",
+    },
+  })
+
+  const name = watch("name")
+  const slug = watch("slug")
+
+  useEffect(() => {
+    fetch("/api/admin/users?page=1&pageSize=100")
+      .then(res => res.json())
+      .then(data => {
+        setUsers(data.users || [])
+        setLoadingUsers(false)
+      })
+      .catch(error => {
+        console.error("Failed to load users", error)
+        setLoadingUsers(false)
+      })
+  }, [])
+
+  const generateSlug = () => {
+    const generatedSlug = name
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+    if (generatedSlug) {
+      setValue("slug", generatedSlug)
     }
-  };
+  }
+
+  const onSubmit = async (data: CreateOrgData) => {
+    setIsLoading(true)
+    try {
+      // Prepare payload with owner info
+      const payload = {
+        ...data,
+        ownerType: selectedOwnerType,
+        ...(selectedOwnerType === "existing" && { ownerUserId: selectedUserId }),
+        ...(selectedOwnerType === "new" && { ownerEmail, ownerName }),
+      }
+
+      const res = await fetch("/api/admin/organizations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      })
+
+      const result = await res.json()
+
+      if (!res.ok) {
+        throw new Error(result.error || result.message || "Failed to create organization")
+      }
+
+      if (selectedOwnerType === "new") {
+        toast.success(`Organization created! An invitation has been sent to ${ownerEmail}.`)
+      } else {
+        const owner = users.find(u => u.id === selectedUserId)
+        toast.success(`Organization created and assigned to ${owner?.name || owner?.email}!`)
+      }
+      
+      router.push(`/admin/organizations/${result.id}`)
+    } catch (error: any) {
+      toast.error(error.message)
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  if (loadingUsers) {
+    return (
+      <div className="flex h-64 items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    )
+  }
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <Link
-            href="/admin/organizations"
-            className="inline-flex items-center text-sm text-gray-500 hover:text-gray-700 mb-2"
-          >
-            <ArrowLeft className="h-4 w-4 mr-1" />
-            Back to Organizations
-          </Link>
-          <h1 className="text-2xl font-bold text-gray-900">
-            Create New Organization
-          </h1>
-          <p className="text-gray-600 mt-1">
-            Set up a new organization for a client
-          </p>
-        </div>
-        <div className="bg-purple-100 p-3 rounded-lg">
-          <Building className="h-6 w-6 text-purple-600" />
-        </div>
-      </div>
-
-      <form onSubmit={handleSubmit} className="bg-white shadow rounded-lg p-6 space-y-6">
-        {/* Organization Details */}
-        <div>
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">
-            Organization Details
-          </h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Organization Name *
-              </label>
-              <input
-                type="text"
-                required
-                value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                placeholder="Acme Corporation"
+    <div className="container mx-auto max-w-2xl py-12 px-4">
+      <Card>
+        <CardHeader className="text-center">
+          <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-primary/10">
+            <Building2 className="h-8 w-8 text-primary" />
+          </div>
+          <CardTitle className="text-2xl">Create Organization (Admin)</CardTitle>
+          <CardDescription>
+            Create a new organization and assign an owner
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+            <div className="space-y-2">
+              <Label htmlFor="name">Organization Name *</Label>
+              <Input
+                id="name"
+                {...register("name")}
+                placeholder="e.g., Tech Community, Sports Club"
+                onChange={(e) => {
+                  register("name").onChange(e)
+                  if (!slug) {
+                    generateSlug()
+                  }
+                }}
               />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                URL Slug *
-              </label>
-              <input
-                type="text"
-                required
-                value={formData.slug}
-                onChange={(e) => setFormData({ ...formData, slug: e.target.value.toLowerCase().replace(/\s+/g, '-') })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                placeholder="acme-corp"
-              />
-              <p className="text-xs text-gray-500 mt-1">
-                Will be used in URLs: /organization/acme-corp
+              {errors.name && (
+                <p className="text-sm text-red-500">{errors.name.message}</p>
+              )}
+              <p className="text-xs text-muted-foreground">
+                This will be displayed to members
               </p>
             </div>
-            <div className="md:col-span-2">
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Description
-              </label>
-              <textarea
-                value={formData.description}
-                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                rows={3}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                placeholder="Brief description of the organization..."
-              />
-            </div>
-          </div>
-        </div>
 
-        {/* Plan Selection */}
-        <div>
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">
-            Plan Selection
-          </h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {[
-              { value: 'STARTER', label: 'Starter', price: '$99/mo', features: ['Basic features', 'Up to 50 members', 'Email support'] },
-              { value: 'PROFESSIONAL', label: 'Professional', price: '$299/mo', features: ['Advanced features', 'Up to 200 members', 'Priority support', 'Custom branding'] },
-              { value: 'ENTERPRISE', label: 'Enterprise', price: 'Custom', features: ['All features', 'Unlimited members', '24/7 support', 'Dedicated account manager', 'Custom development'] },
-            ].map((plan) => (
-              <div
-                key={plan.value}
-                className={`border rounded-lg p-4 cursor-pointer transition-all ${
-                  formData.plan === plan.value
-                    ? 'border-purple-500 bg-purple-50'
-                    : 'border-gray-200 hover:border-gray-300'
-                }`}
-                onClick={() => setFormData({ ...formData, plan: plan.value as any })}
-              >
-                <div className="flex items-center justify-between mb-2">
-                  <h3 className="font-medium text-gray-900">{plan.label}</h3>
-                  <span className="text-lg font-bold text-gray-900">{plan.price}</span>
+            <div className="space-y-2">
+              <Label htmlFor="slug">Organization URL Slug *</Label>
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <div className="flex-1">
+                    <div className="flex items-center rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2">
+                      <span className="text-muted-foreground whitespace-nowrap">
+                        membershome.com/organization/
+                      </span>
+                      <Input
+                        id="slug"
+                        {...register("slug")}
+                        placeholder="your-organization"
+                        className="border-0 bg-transparent p-0 focus-visible:ring-0 focus-visible:ring-offset-0"
+                      />
+                    </div>
+                  </div>
+                  {name && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      onClick={generateSlug}
+                      disabled={!name}
+                      title="Generate from name"
+                    >
+                      <RefreshCw className="h-4 w-4" />
+                    </Button>
+                  )}
                 </div>
-                <ul className="space-y-1 text-sm text-gray-600">
-                  {plan.features.map((feature, idx) => (
-                    <li key={idx} className="flex items-center">
-                      <div className="h-1 w-1 bg-gray-400 rounded-full mr-2"></div>
-                      {feature}
-                    </li>
-                  ))}
-                </ul>
               </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Initial Admin */}
-        <div>
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">
-            Initial Organization Admin
-          </h2>
-          <p className="text-sm text-gray-600 mb-4">
-            This person will be the first admin of the organization and can add more members.
-          </p>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Admin Name *
-              </label>
-              <input
-                type="text"
-                required
-                value={formData.adminName}
-                onChange={(e) => setFormData({ ...formData, adminName: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                placeholder="John Doe"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Admin Email *
-              </label>
-              <input
-                type="email"
-                required
-                value={formData.adminEmail}
-                onChange={(e) => setFormData({ ...formData, adminEmail: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                placeholder="john@example.com"
-              />
-              <p className="text-xs text-gray-500 mt-1">
-                If user doesn't exist, an account will be created
+              {errors.slug && (
+                <p className="text-sm text-red-500">{errors.slug.message}</p>
+              )}
+              <p className="text-xs text-muted-foreground">
+                This is the unique URL. Use only lowercase letters, numbers, and hyphens.
               </p>
             </div>
-          </div>
-        </div>
 
-        {/* Submit */}
-        <div className="flex items-center justify-between pt-6 border-t border-gray-200">
-          <Link
-            href="/admin/organizations"
-            className="px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50"
-          >
-            Cancel
-          </Link>
-          <button
-            type="submit"
-            disabled={loading}
-            className="inline-flex items-center px-6 py-3 bg-purple-600 text-white font-medium rounded-lg hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 disabled:opacity-50"
-          >
-            <UserPlus className="h-4 w-4 mr-2" />
-            {loading ? 'Creating...' : 'Create Organization'}
-          </button>
-        </div>
-      </form>
+            <div className="space-y-2">
+              <Label>Organization Owner *</Label>
+              <Tabs value={selectedOwnerType} onValueChange={(v) => setSelectedOwnerType(v as "existing" | "new")}>
+                <TabsList className="grid w-full grid-cols-2">
+                  <TabsTrigger value="existing" className="flex items-center gap-2">
+                    <UserPlus className="h-4 w-4" />
+                    Existing User
+                  </TabsTrigger>
+                  <TabsTrigger value="new" className="flex items-center gap-2">
+                    <Mail className="h-4 w-4" />
+                    Invite New User
+                  </TabsTrigger>
+                </TabsList>
+                
+                <TabsContent value="existing" className="mt-4 space-y-2">
+                  <Select onValueChange={setSelectedUserId}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select a user to be the owner" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {users.map((user) => (
+                        <SelectItem key={user.id} value={user.id}>
+                          <div className="flex items-center gap-2">
+                            <UserPlus className="h-4 w-4" />
+                            <span>{user.name || user.email}</span>
+                            {user.platformRole === "PLATFORM_ADMIN" && (
+                              <span className="text-xs text-purple-500">(Admin)</span>
+                            )}
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {!selectedUserId && (
+                    <p className="text-xs text-muted-foreground">
+                      Select an existing user to become the organization owner
+                    </p>
+                  )}
+                </TabsContent>
+                
+                <TabsContent value="new" className="mt-4 space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="ownerName">Full Name</Label>
+                    <Input
+                      id="ownerName"
+                      placeholder="John Doe"
+                      value={ownerName}
+                      onChange={(e) => setOwnerName(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="ownerEmail">Email Address</Label>
+                    <Input
+                      id="ownerEmail"
+                      type="email"
+                      placeholder="owner@example.com"
+                      value={ownerEmail}
+                      onChange={(e) => setOwnerEmail(e.target.value)}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      An invitation will be sent to this email address
+                    </p>
+                  </div>
+                </TabsContent>
+              </Tabs>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="description">Description</Label>
+              <Textarea
+                id="description"
+                {...register("description")}
+                placeholder="Tell us about this organization..."
+                rows={4}
+              />
+              {errors.description && (
+                <p className="text-sm text-red-500">{errors.description.message}</p>
+              )}
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="plan">Plan</Label>
+                <Select
+                  defaultValue="FREE"
+                  onValueChange={(value) => setValue("plan", value as any)}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="FREE">Free</SelectItem>
+                    <SelectItem value="STARTER">Starter ($29/mo)</SelectItem>
+                    <SelectItem value="PROFESSIONAL">Professional ($99/mo)</SelectItem>
+                    <SelectItem value="ENTERPRISE">Enterprise ($299/mo)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="billingEmail">Billing Email</Label>
+                <div className="relative">
+                  <Globe className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    id="billingEmail"
+                    {...register("billingEmail")}
+                    placeholder="billing@example.com"
+                    className="pl-9"
+                  />
+                </div>
+                {errors.billingEmail && (
+                  <p className="text-sm text-red-500">{errors.billingEmail.message}</p>
+                )}
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="website">Website (Optional)</Label>
+              <div className="relative">
+                <Globe className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  id="website"
+                  {...register("website")}
+                  placeholder="https://example.com"
+                  className="pl-9"
+                />
+              </div>
+              {errors.website && (
+                <p className="text-sm text-red-500">{errors.website.message}</p>
+              )}
+            </div>
+
+            <div className="rounded-lg bg-muted p-4">
+              <div className="flex items-start gap-3">
+                <FileText className="h-5 w-5 text-muted-foreground mt-0.5" />
+                <div className="text-sm">
+                  <p className="font-medium">What happens next?</p>
+                  <p className="text-muted-foreground">
+                    {selectedOwnerType === "existing" 
+                      ? "The selected user will be assigned as the organization owner and can start managing immediately."
+                      : "An invitation will be sent to the email address. When the user accepts, they will become the organization owner."}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex gap-4">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => router.back()}
+                className="flex-1"
+                disabled={isLoading}
+              >
+                Cancel
+              </Button>
+              <Button 
+                type="submit" 
+                disabled={isLoading || (selectedOwnerType === "existing" && !selectedUserId) || (selectedOwnerType === "new" && (!ownerEmail || !ownerName))} 
+                className="flex-1"
+              >
+                {isLoading ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Creating...
+                  </>
+                ) : (
+                  "Create Organization"
+                )}
+              </Button>
+            </div>
+          </form>
+        </CardContent>
+      </Card>
     </div>
-  );
+  )
 }

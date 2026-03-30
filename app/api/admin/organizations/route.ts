@@ -1,206 +1,310 @@
-// app/api/admin/organizations/route.ts
-import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from '@/lib/auth';
-import { prisma } from '@/lib/db';
-import { z } from 'zod';
-import { sendOrganizationInviteEmail } from '@/lib/email';
+import { NextResponse } from "next/server"
+import { prisma } from "@/lib/db"
+import { requirePlatformAdmin } from "@/lib/auth"
+import { generateInviteToken, hashToken } from "@/lib/utils/tokens"
+import { sendInvitationEmail } from "@/lib/email"
 
-const organizationSchema = z.object({
-  name: z.string().min(1, "Organization name is required"),
-  slug: z.string().min(1, "Slug is required").regex(/^[a-z0-9-]+$/, "Slug can only contain lowercase letters, numbers, and hyphens"),
-  description: z.string().optional(),
-  plan: z.enum(['STARTER', 'PROFESSIONAL', 'ENTERPRISE']),
-  adminEmail: z.string().email("Valid email is required"),
-  adminName: z.string().min(1, "Admin name is required"),
-});
+export async function GET(req: Request) {
+  try {
+    await requirePlatformAdmin()
 
-// Helper function to get IP from request
-function getClientIp(request: NextRequest): string | undefined {
-  const forwardedFor = request.headers.get('x-forwarded-for');
-  if (forwardedFor) {
-    return forwardedFor.split(',')[0].trim();
+    const { searchParams } = new URL(req.url)
+    const page = parseInt(searchParams.get("page") || "1")
+    const pageSize = parseInt(searchParams.get("pageSize") || "10")
+    const search = searchParams.get("search") || ""
+    const status = searchParams.get("status")
+    const plan = searchParams.get("plan")
+
+    const where: any = {}
+
+    if (search) {
+      where.OR = [
+        { name: { contains: search, mode: "insensitive" } },
+        { slug: { contains: search, mode: "insensitive" } },
+        { billingEmail: { contains: search, mode: "insensitive" } },
+      ]
+    }
+
+    if (status) {
+      where.status = status
+    }
+
+    if (plan) {
+      where.plan = plan
+    }
+
+    const [organizations, total] = await Promise.all([
+      prisma.organization.findMany({
+        where,
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+        orderBy: { createdAt: "desc" },
+        include: {
+          _count: {
+            select: {
+              memberships: true,
+              houses: true,
+              events: true,
+            },
+          },
+          memberships: {
+            where: { organizationRole: "ORG_OWNER" },
+            take: 1,
+            include: {
+              user: {
+                select: {
+                  id: true,
+                  name: true,
+                  email: true,
+                },
+              },
+            },
+          },
+        },
+      }),
+      prisma.organization.count({ where }),
+    ])
+
+    const formattedOrganizations = organizations.map((org) => ({
+      ...org,
+      owner: org.memberships[0]?.user || null,
+    }))
+
+    return NextResponse.json({
+      organizations: formattedOrganizations,
+      total,
+      page,
+      pageSize,
+      totalPages: Math.ceil(total / pageSize),
+    })
+  } catch (error: any) {
+    console.error("Error fetching organizations:", error)
+    return NextResponse.json(
+      { error: error?.message || "Internal server error" },
+      { status: error?.status || 500 }
+    )
   }
-  
-  const realIp = request.headers.get('x-real-ip');
-  if (realIp) {
-    return realIp;
-  }
-  
-  return undefined;
 }
 
-// POST /api/admin/organizations - Create new organization with admin
-export async function POST(request: NextRequest) {
+export async function POST(req: Request) {
   try {
-    const session = await getServerSession();
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    await requirePlatformAdmin()
+
+    const body = await req.json()
+    console.log("=".repeat(60))
+    console.log("📝 Request body:", body)
+    console.log("=".repeat(60))
+
+    const {
+      name,
+      slug,
+      description,
+      website,
+      plan,
+      billingEmail,
+      ownerType,
+      ownerUserId,
+      ownerEmail,
+      ownerName,
+    } = body
+
+    console.log("🔍 Owner Type:", ownerType)
+    console.log("🔍 Owner Email:", ownerEmail)
+    console.log("🔍 Owner Name:", ownerName)
+
+    let ownerId: string
+    let isNewUser = false
+
+    if (ownerType === "existing") {
+      console.log("📌 Existing user flow")
+
+      if (!ownerUserId) {
+        return NextResponse.json(
+          { error: "Owner user ID is required" },
+          { status: 400 }
+        )
+      }
+
+      const owner = await prisma.user.findUnique({
+        where: { id: ownerUserId },
+      })
+
+      if (!owner) {
+        return NextResponse.json(
+          { error: "Owner user not found" },
+          { status: 404 }
+        )
+      }
+
+      ownerId = owner.id
+      console.log("✅ Found existing user:", owner.email)
+    } else {
+      console.log("📌 New user flow")
+
+      if (!ownerEmail) {
+        return NextResponse.json(
+          { error: "Owner email is required" },
+          { status: 400 }
+        )
+      }
+
+      let user = await prisma.user.findUnique({
+        where: { email: ownerEmail },
+      })
+
+      if (!user) {
+        console.log("👤 Creating new user:", ownerEmail)
+        user = await prisma.user.create({
+          data: {
+            email: ownerEmail,
+            name: ownerName || ownerEmail.split("@")[0],
+            platformRole: "USER",
+          },
+        })
+        isNewUser = true
+        console.log("✅ New user created with ID:", user.id)
+      } else {
+        console.log("👤 User already exists:", ownerEmail)
+        isNewUser = true
+        console.log("✅ Existing user found with ID:", user.id)
+      }
+
+      ownerId = user.id
     }
 
-    const adminUser = await prisma.user.findUnique({
-      where: { email: session.user.email },
-    });
+    console.log("✅ Owner ID:", ownerId)
+    console.log("🆕 Is New User:", isNewUser)
 
-    // Only platform admin can create organizations
-    if (!adminUser || adminUser.platformRole !== 'PLATFORM_ADMIN') {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-    }
-
-    const body = await request.json();
-    const validatedData = organizationSchema.safeParse(body);
-
-    if (!validatedData.success) {
-      const errors = validatedData.error.issues.map(issue => ({
-        path: issue.path.join('.'),
-        message: issue.message
-      }));
-      
-      return NextResponse.json(
-        { error: 'Validation failed', details: errors },
-        { status: 400 }
-      );
-    }
-
-    const { name, slug, description, plan, adminEmail, adminName } = validatedData.data;
-
-    // Check if slug is unique
-    const existingOrg = await prisma.organization.findUnique({
-      where: { slug },
-    });
+    const existingOrg = await prisma.organization.findFirst({
+      where: {
+        OR: [{ slug }, { name }],
+      },
+    })
 
     if (existingOrg) {
       return NextResponse.json(
-        { error: 'An organization with this slug already exists' },
+        { error: "Organization with this name or slug already exists" },
         { status: 400 }
-      );
+      )
     }
 
-    // Get client IP
-    const clientIp = getClientIp(request);
+    let inviteToken: string | null = null
+    let hashedToken: string | null = null
+    let invitedAt: Date | null = null
 
-    // Start transaction
-    const result = await prisma.$transaction(async (tx) => {
-      // Find or create user
-      let user = await tx.user.findUnique({
-        where: { email: adminEmail },
-      });
+    if (isNewUser) {
+      inviteToken = generateInviteToken()
+      hashedToken = hashToken(inviteToken)
+      invitedAt = new Date()
 
-      if (!user) {
-        user = await tx.user.create({
-          data: {
-            email: adminEmail,
-            name: adminName,
-            platformRole: 'USER', // Fixed: Use 'USER' not 'MEMBER'
-          },
-        });
-      }
+      console.log("🔑 Generated invite token:", inviteToken)
+      console.log("🔒 Hashed token:", hashedToken)
+      console.log("🕒 Invited at:", invitedAt.toISOString())
+    }
 
-      // Create organization
-      const organization = await tx.organization.create({
+    const organization = await prisma.$transaction(async (tx) => {
+      const org = await tx.organization.create({
         data: {
           name,
           slug,
-          description,
-          plan: plan, // Fixed: Use enum value
-          status: 'ACTIVE',
+          description: description || null,
+          website: website || null,
+          plan: plan || "FREE",
+          billingEmail: billingEmail || null,
+          settings: {},
         },
-      });
+      })
 
-      // Create membership as ORG_OWNER
-      const membership = await tx.membership.create({
-        data: {
-          userId: user.id,
-          organizationId: organization.id,
-          organizationRole: 'ORG_OWNER',
-          status: 'ACTIVE',
-          joinedAt: new Date(),
-        },
-      });
+      console.log("🏢 Organization created:", org.id)
+      console.log("📛 Organization name:", org.name)
+      console.log("🔗 Organization slug:", org.slug)
 
-      // Create audit log - FIXED: Use correct schema
-      await tx.auditLog.create({
-        data: {
-          userId: adminUser.id,
-          userEmail: adminUser.email,
-          userIp: clientIp || undefined,
-          userAgent: request.headers.get('user-agent') || undefined,
-          action: 'CREATE_ORGANIZATION',
-          entityType: 'ORGANIZATION',
-          entityId: organization.id,
-          organizationId: organization.id,
-          oldValues: null,
-          newValues: {
-            name,
-            slug,
-            plan,
-            description,
-            adminEmail,
-            adminName,
-          },
-          metadata: {
-            createdByPlatformAdmin: true,
-            platformAdminEmail: adminUser.email,
-          },
-        },
-      });
+     const membership = await tx.membership.create({
+  data: {
+    userId: ownerId,
+    organizationId: org.id,
+    organizationRole: "ORG_OWNER",
+    status: isNewUser ? "PENDING" : "ACTIVE",
+    joinedAt: isNewUser ? undefined : new Date(),
+    invitedAt: isNewUser ? new Date() : undefined,
+    invitationToken: isNewUser ? hashedToken ?? undefined : undefined,
+  },
+})
+      console.log("👥 Membership created for user:", ownerId)
+      console.log("📊 Membership status:", membership.status)
+      console.log("🎫 Membership ID:", membership.id)
+      console.log("🕒 Membership invitedAt:", membership.invitedAt)
+      console.log("🔒 Membership invitationToken:", membership.invitationToken)
 
-      return { organization, membership };
-    });
+      return org
+    })
 
-    // Send invitation email
-    await sendOrganizationInviteEmail({
-      to: adminEmail,
-      organizationName: name,
-      adminName,
-      loginUrl: `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/`,
-    });
+    if (isNewUser && inviteToken && ownerEmail) {
+      console.log("\n" + "=".repeat(60))
+      console.log("📧 Attempting to send invitation email to:", ownerEmail)
+      console.log("📧 Invite token:", inviteToken)
+      console.log("=".repeat(60))
 
-    return NextResponse.json(result.organization, { status: 201 });
-  } catch (error) {
-    console.error('POST organization error:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
-  }
-}
-
-// GET /api/admin/organizations - List all organizations (Platform Admin only)
-export async function GET(request: NextRequest) {
-  try {
-    const session = await getServerSession();
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      try {
+        await sendInvitationEmail(ownerEmail, name, inviteToken)
+        console.log("✅ Email sent successfully\n")
+      } catch (emailError) {
+        console.error("❌ Email sending failed:", emailError)
+      }
+    } else {
+      console.log("ℹ️ No email sent (existing user or no token)")
     }
 
-    const user = await prisma.user.findUnique({
-      where: { email: session.user.email },
-    });
-
-    if (!user || user.platformRole !== 'PLATFORM_ADMIN') {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-    }
-
-    const organizations = await prisma.organization.findMany({
+    const createdOrg = await prisma.organization.findUnique({
+      where: { id: organization.id },
       include: {
-        _count: {
-          select: {
-            memberships: {
-              where: { status: 'ACTIVE' },
+        memberships: {
+          where: { organizationRole: "ORG_OWNER" },
+          include: {
+            user: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+              },
             },
-            houses: true,
           },
         },
       },
-      orderBy: { createdAt: 'desc' },
-    });
+    })
 
-    return NextResponse.json(organizations);
-  } catch (error) {
-    console.error('GET organizations error:', error);
+    console.log("\n" + "=".repeat(60))
+    console.log("🎉 Organization creation complete!")
+    console.log("📊 Summary:")
+    console.log("   Organization ID:", createdOrg?.id)
+    console.log("   Organization Name:", createdOrg?.name)
+    console.log("   Owner:", createdOrg?.memberships[0]?.user?.email)
+    console.log("   New User:", isNewUser)
+    if (inviteToken) {
+      console.log(
+        "   Invite Link:",
+        `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/invitations/${inviteToken}`
+      )
+    }
+    console.log("=".repeat(60) + "\n")
+
     return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+      {
+        ...createdOrg,
+        owner: createdOrg?.memberships[0]?.user,
+        isNewUser,
+        inviteToken,
+      },
+      { status: 201 }
+    )
+  } catch (error: any) {
+    console.error("❌ Error creating organization:", error)
+    return NextResponse.json(
+      {
+        error: "Internal server error",
+        details: error?.message || String(error),
+      },
+      { status: error?.status || 500 }
+    )
   }
 }

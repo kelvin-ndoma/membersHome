@@ -1,252 +1,202 @@
-// components/people/PeopleTable.tsx
-'use client';
+"use client"
 
-import { useState } from 'react';
-import Link from 'next/link';
-import { 
-  Mail, 
-  Phone, 
-  MoreVertical, 
-  User, 
-  Shield,
-  Eye,
-  Edit,
-  Send,
-  Trash2
-} from 'lucide-react';
-import Badge from '../ui/Badge';
-import Dropdown from '../ui/Dropdown';
+import { useState } from "react"
+import { format } from "date-fns"
+import { MoreHorizontal, UserCog, Mail, Ban, CheckCircle } from "lucide-react"
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/Table"
+import { Button } from "@/components/ui/Button"
+import { Badge } from "@/components/ui/Badge"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/Avatar"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/Dropdown"
 
-interface Person {
-  id: string;
-  name: string;
-  email: string;
-  phone?: string;
-  joinedAt: string;
-  status: string;
-  organizationRole: string;
-  house?: {
-    name: string;
-  };
+interface Member {
+  id: string
+  user: {
+    id: string
+    name: string
+    email: string
+    image?: string | null
+    phone?: string | null
+  }
+  organizationRole: string
+  status: string
+  joinedAt: Date
+  lastActiveAt?: Date | null
+  title?: string | null
 }
 
 interface PeopleTableProps {
-  people: Person[];
-  orgSlug: string;
-  onUpdate: () => void;
+  members: Member[]
+  onRoleChange?: (memberId: string, newRole: string) => void
+  onStatusChange?: (memberId: string, newStatus: string) => void
+  onResendInvite?: (memberId: string) => void
+  onViewDetails?: (memberId: string) => void
+  currentUserRole?: string
 }
 
-export default function PeopleTable({ people, orgSlug, onUpdate }: PeopleTableProps) {
-  const [selectedPeople, setSelectedPeople] = useState<string[]>([]);
+const roleLabels: Record<string, string> = {
+  MEMBER: "Member",
+  ORG_ADMIN: "Admin",
+  ORG_OWNER: "Owner",
+}
 
-  const handleSelectAll = () => {
-    if (selectedPeople.length === people.length) {
-      setSelectedPeople([]);
-    } else {
-      setSelectedPeople(people.map(p => p.id));
-    }
-  };
+const statusColors: Record<string, string> = {
+  ACTIVE: "bg-green-100 text-green-800",
+  PENDING: "bg-yellow-100 text-yellow-800",
+  PAUSED: "bg-gray-100 text-gray-800",
+  EXPIRED: "bg-red-100 text-red-800",
+  BANNED: "bg-red-100 text-red-800",
+}
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'ACTIVE': return 'green';
-      case 'PENDING': return 'yellow';
-      case 'PAUSED': return 'gray';
-      case 'BANNED': return 'red';
-      default: return 'gray';
-    }
-  };
+export function PeopleTable({
+  members,
+  onRoleChange,
+  onStatusChange,
+  onResendInvite,
+  onViewDetails,
+  currentUserRole,
+}: PeopleTableProps) {
+  const canManage = currentUserRole === "ORG_ADMIN" || currentUserRole === "ORG_OWNER"
 
-  const getRoleColor = (role: string) => {
-    switch (role) {
-      case 'ORG_OWNER': return 'purple';
-      case 'ORG_ADMIN': return 'blue';
-      default: return 'gray';
-    }
-  };
-
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-    });
-  };
-
-  const handleAction = async (action: string, personId: string) => {
-    switch (action) {
-      case 'resend':
-        try {
-          await fetch(`/api/organizations/${orgSlug}/members/${personId}/resend-invitation`, {
-            method: 'POST',
-          });
-          onUpdate();
-        } catch (error) {
-          console.error('Failed to resend invitation:', error);
-        }
-        break;
-      case 'delete':
-        if (confirm('Are you sure you want to remove this person?')) {
-          try {
-            await fetch(`/api/organizations/${orgSlug}/members/${personId}`, {
-              method: 'DELETE',
-            });
-            onUpdate();
-          } catch (error) {
-            console.error('Failed to delete person:', error);
-          }
-        }
-        break;
-    }
-  };
+  const getInitials = (name: string) => {
+    return name
+      .split(" ")
+      .map((n) => n[0])
+      .join("")
+      .toUpperCase()
+      .slice(0, 2)
+  }
 
   return (
-    <div className="overflow-x-auto">
-      <table className="min-w-full divide-y divide-gray-200">
-        <thead className="bg-gray-50">
-          <tr>
-            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-              Person
-            </th>
-            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-              Contact
-            </th>
-            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-              Role
-            </th>
-            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-              Status
-            </th>
-            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-              Joined
-            </th>
-            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-              House
-            </th>
-            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-              Actions
-            </th>
-          </tr>
-        </thead>
-        <tbody className="bg-white divide-y divide-gray-200">
-          {people.map((person) => (
-            <tr key={person.id} className="hover:bg-gray-50">
-              <td className="px-6 py-4 whitespace-nowrap">
-                <div className="flex items-center">
-                  <div className="flex-shrink-0 h-10 w-10">
-                    <div className="h-10 w-10 rounded-full bg-gray-200 flex items-center justify-center">
-                      <User className="h-5 w-5 text-gray-400" />
+    <div className="rounded-md border">
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Member</TableHead>
+            <TableHead>Role</TableHead>
+            <TableHead>Status</TableHead>
+            <TableHead>Joined</TableHead>
+            <TableHead>Last Active</TableHead>
+            <TableHead className="w-[50px]"></TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {members.length === 0 ? (
+            <TableRow>
+              <TableCell colSpan={6} className="h-24 text-center">
+                No members found
+              </TableCell>
+            </TableRow>
+          ) : (
+            members.map((member) => (
+              <TableRow key={member.id}>
+                <TableCell>
+                  <div className="flex items-center gap-3">
+                    <Avatar className="h-8 w-8">
+                      <AvatarImage src={member.user.image || ""} />
+                      <AvatarFallback>{getInitials(member.user.name)}</AvatarFallback>
+                    </Avatar>
+                    <div>
+                      <p className="font-medium">{member.user.name}</p>
+                      <p className="text-sm text-muted-foreground">{member.user.email}</p>
+                      {member.title && (
+                        <p className="text-xs text-muted-foreground">{member.title}</p>
+                      )}
                     </div>
                   </div>
-                  <div className="ml-4">
-                    <div className="text-sm font-medium text-gray-900">
-                      {person.name || 'No name'}
-                    </div>
-                  </div>
-                </div>
-              </td>
-              <td className="px-6 py-4 whitespace-nowrap">
-                <div className="text-sm text-gray-900">{person.email}</div>
-                {person.phone && (
-                  <div className="flex items-center text-sm text-gray-500">
-                    <Phone className="h-3 w-3 mr-1" />
-                    {person.phone}
-                  </div>
-                )}
-              </td>
-              <td className="px-6 py-4 whitespace-nowrap">
-                <div className="flex items-center">
-                  {person.organizationRole === 'ORG_ADMIN' || person.organizationRole === 'ORG_OWNER' ? (
-                    <Shield className="h-4 w-4 text-blue-500 mr-1" />
-                  ) : null}
-                  <Badge color={getRoleColor(person.organizationRole)}>
-                    {person.organizationRole.replace('ORG_', '').toLowerCase()}
+                </TableCell>
+                <TableCell>
+                  <Badge variant="outline">{roleLabels[member.organizationRole] || member.organizationRole}</Badge>
+                </TableCell>
+                <TableCell>
+                  <Badge className={statusColors[member.status]}>
+                    {member.status}
                   </Badge>
-                </div>
-              </td>
-              <td className="px-6 py-4 whitespace-nowrap">
-                <Badge color={getStatusColor(person.status)}>
-                  {person.status.toLowerCase()}
-                </Badge>
-              </td>
-              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                {formatDate(person.joinedAt)}
-              </td>
-              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                {person.house?.name || '-'}
-              </td>
-              <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                <div className="flex items-center space-x-2">
-                  <Link
-                    href={`/organization/${orgSlug}/people/${person.id}`}
-                    className="text-blue-600 hover:text-blue-900"
-                    title="View"
-                  >
-                    <Eye className="h-4 w-4" />
-                  </Link>
-                  <Link
-                    href={`/organization/${orgSlug}/people/${person.id}/edit`}
-                    className="text-gray-600 hover:text-gray-900"
-                    title="Edit"
-                  >
-                    <Edit className="h-4 w-4" />
-                  </Link>
-                  <Dropdown
-                    trigger={
-                      <button className="text-gray-400 hover:text-gray-600">
-                        <MoreVertical className="h-5 w-5" />
-                      </button>
-                    }
-                    items={[
-                      ...(person.status === 'PENDING'
-                        ? [
-                            {
-                              label: 'Resend Invitation',
-                              onClick: () => handleAction('resend', person.id),
-                              icon: <Send className="h-4 w-4 mr-2" />,
-                            },
-                          ]
-                        : []),
-                      {
-                        label: 'Send Message',
-                        onClick: () => {
-                          // TODO: Implement send message
-                        },
-                        icon: <Mail className="h-4 w-4 mr-2" />,
-                      },
-                      {
-                        label: 'Remove',
-                        onClick: () => handleAction('delete', person.id),
-                        icon: <Trash2 className="h-4 w-4 mr-2" />,
-                        className: 'text-red-600',
-                      },
-                    ]}
-                  />
-                </div>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-
-      {people.length === 0 && (
-        <div className="text-center py-12">
-          <User className="h-12 w-12 text-gray-400 mx-auto" />
-          <h3 className="mt-4 text-sm font-medium text-gray-900">No people found</h3>
-          <p className="mt-1 text-sm text-gray-500">
-            Get started by registering a new person.
-          </p>
-          <div className="mt-6">
-            <Link
-              href={`/organization/${orgSlug}/people/create`}
-              className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700"
-            >
-              Register Person
-            </Link>
-          </div>
-        </div>
-      )}
+                </TableCell>
+                <TableCell className="text-sm">
+                  {format(new Date(member.joinedAt), "MMM d, yyyy")}
+                </TableCell>
+                <TableCell className="text-sm">
+                  {member.lastActiveAt
+                    ? format(new Date(member.lastActiveAt), "MMM d, yyyy")
+                    : "Never"}
+                </TableCell>
+                <TableCell>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="ghost" size="icon" className="h-8 w-8">
+                        <MoreHorizontal className="h-4 w-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                      <DropdownMenuSeparator />
+                      {onViewDetails && (
+                        <DropdownMenuItem onClick={() => onViewDetails(member.id)}>
+                          View Details
+                        </DropdownMenuItem>
+                      )}
+                      {onResendInvite && member.status === "PENDING" && (
+                        <DropdownMenuItem onClick={() => onResendInvite(member.id)}>
+                          <Mail className="mr-2 h-4 w-4" />
+                          Resend Invitation
+                        </DropdownMenuItem>
+                      )}
+                      {canManage && member.organizationRole !== "ORG_OWNER" && onRoleChange && (
+                        <>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuLabel>Change Role</DropdownMenuLabel>
+                          <DropdownMenuItem onClick={() => onRoleChange(member.id, "MEMBER")}>
+                            Member
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => onRoleChange(member.id, "ORG_ADMIN")}>
+                            Admin
+                          </DropdownMenuItem>
+                        </>
+                      )}
+                      {canManage && member.status !== "BANNED" && onStatusChange && (
+                        <>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem
+                            onClick={() => onStatusChange(member.id, "BANNED")}
+                            className="text-red-600"
+                          >
+                            <Ban className="mr-2 h-4 w-4" />
+                            Ban Member
+                          </DropdownMenuItem>
+                        </>
+                      )}
+                      {canManage && member.status === "BANNED" && onStatusChange && (
+                        <DropdownMenuItem
+                          onClick={() => onStatusChange(member.id, "ACTIVE")}
+                          className="text-green-600"
+                        >
+                          <CheckCircle className="mr-2 h-4 w-4" />
+                          Restore Member
+                        </DropdownMenuItem>
+                      )}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </TableCell>
+              </TableRow>
+            ))
+          )}
+        </TableBody>
+      </Table>
     </div>
-  );
+  )
 }

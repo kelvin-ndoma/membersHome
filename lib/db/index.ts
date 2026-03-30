@@ -1,4 +1,3 @@
-// lib/db/index.ts
 import { PrismaClient } from '@prisma/client'
 
 const globalForPrisma = globalThis as unknown as {
@@ -9,18 +8,28 @@ export const prisma = globalForPrisma.prisma ?? new PrismaClient()
 
 if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = prisma
 
-// MongoDB-specific utilities
-export const connectToDatabase = async () => {
+export type PrismaTransaction = Parameters<
+  Parameters<typeof prisma.$transaction>[0]
+>[0]
+
+export async function withTransaction<T>(
+  fn: (tx: PrismaTransaction) => Promise<T>
+): Promise<T> {
+  return prisma.$transaction(fn)
+}
+
+export async function disconnectDatabase() {
+  await prisma.$disconnect()
+}
+
+export async function checkDatabaseConnection() {
   try {
-    await prisma.$connect()
-    console.log('✅ Connected to MongoDB')
+    await prisma.$runCommandRaw({ ping: 1 })
+    return true
   } catch (error) {
-    console.error('❌ Failed to connect to MongoDB:', error)
-    throw error
+    console.error('Database connection failed:', error)
+    return false
   }
 }
 
-// Graceful shutdown
-export const disconnectFromDatabase = async () => {
-  await prisma.$disconnect()
-}
+export * from '@prisma/client'

@@ -1,140 +1,267 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
-import Link from "next/link"
+import { useForm } from "react-hook-form"
+import { zodResolver } from "@hookform/resolvers/zod"
+import { z } from "zod"
+import { useSession } from "next-auth/react"
+import { Button } from "@/components/ui/Button"
+import { Input } from "@/components/ui/Input"
+import { Textarea } from "@/components/ui/Textarea"
+import { Label } from "@/components/ui/Label"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/Card"
+import { toast } from "sonner"
+import { Building2, Globe, FileText, Loader2, RefreshCw } from "lucide-react"
+
+const createOrgSchema = z.object({
+  name: z.string()
+    .min(2, "Name must be at least 2 characters")
+    .max(100, "Name must be less than 100 characters"),
+  slug: z.string()
+    .min(3, "Slug must be at least 3 characters")
+    .max(50, "Slug must be less than 50 characters")
+    .regex(/^[a-z0-9-]+$/, "Slug can only contain lowercase letters, numbers, and hyphens"),
+  description: z.string().max(500, "Description must be less than 500 characters").optional(),
+  website: z.string().url("Must be a valid URL").optional().or(z.literal("")),
+})
+
+type CreateOrgData = z.infer<typeof createOrgSchema>
 
 export default function CreateOrganizationPage() {
   const router = useRouter()
-  const [formData, setFormData] = useState({
-    name: "",
-    description: "",
+  const { data: session, status } = useSession()
+  const [isLoading, setIsLoading] = useState(false)
+
+  const {
+    register,
+    handleSubmit,
+    setValue,
+    watch,
+    formState: { errors },
+  } = useForm<CreateOrgData>({
+    resolver: zodResolver(createOrgSchema),
+    defaultValues: {
+      name: "",
+      slug: "",
+      description: "",
+      website: "",
+    },
   })
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState("")
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-    setFormData({
-      ...formData,
-      [e.target.name]: e.target.value
-    })
-  }
+  const name = watch("name")
+  const slug = watch("slug")
 
-  const generateSlug = (name: string) => {
-    return name
+  // Check authentication
+  useEffect(() => {
+    if (status === "unauthenticated") {
+      router.push("/auth/login")
+    }
+  }, [status, router])
+
+  const generateSlug = () => {
+    const generatedSlug = name
       .toLowerCase()
-      .replace(/[^\w\s]/gi, '')
-      .replace(/\s+/g, '-')
-      .replace(/--+/g, '-')
-      .trim()
-  }
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setLoading(true)
-    setError("")
-
-    try {
-      const response = await fetch("/api/organizations", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ...formData,
-          slug: generateSlug(formData.name),
-        }),
-      })
-
-      const data = await response.json()
-
-      if (!response.ok) {
-        throw new Error(data.error || "Failed to create organization")
-      }
-
-      router.push(`/organization/${data.slug}`)
-    } catch (error) {
-      setError(error instanceof Error ? error.message : "Failed to create organization")
-    } finally {
-      setLoading(false)
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+    if (generatedSlug) {
+      setValue("slug", generatedSlug)
     }
   }
 
+  const onSubmit = async (data: CreateOrgData) => {
+    if (!session) {
+      toast.error("Please sign in to create an organization")
+      router.push("/auth/login")
+      return
+    }
+
+    setIsLoading(true)
+    try {
+      console.log("Submitting organization creation...")
+      const res = await fetch("/api/organizations", {
+        method: "POST",
+        headers: { 
+          "Content-Type": "application/json",
+        },
+        credentials: "include", // Important: include cookies
+        body: JSON.stringify(data),
+      })
+
+      const result = await res.json()
+      console.log("Response status:", res.status)
+
+      if (!res.ok) {
+        if (res.status === 401) {
+          toast.error("Please sign in to create an organization")
+          router.push("/auth/login")
+          return
+        }
+        throw new Error(result.error || result.message || "Failed to create organization")
+      }
+
+      toast.success("Organization created successfully!")
+      router.push(`/organization/${result.slug}/dashboard`)
+    } catch (error: any) {
+      console.error("Error:", error)
+      toast.error(error.message)
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  if (status === "loading") {
+    return (
+      <div className="flex h-screen items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    )
+  }
+
+  if (!session) {
+    return null // Will redirect via useEffect
+  }
+
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="max-w-2xl mx-auto py-12 px-4 sm:px-6 lg:px-8">
-        <div className="mb-8">
-          <Link 
-            href="/organization" 
-            className="text-blue-600 hover:text-blue-800 mb-4 inline-block"
-          >
-            ← Back to Organizations
-          </Link>
-          <h1 className="text-3xl font-bold text-gray-900">Create Organization</h1>
-          <p className="mt-2 text-gray-600">
-            Create a new organization to start managing members, houses, and events.
-          </p>
-        </div>
-        
-        <div className="bg-white shadow rounded-lg p-6">
-          <form onSubmit={handleSubmit} className="space-y-6">
-            <div>
-              <label htmlFor="name" className="block text-sm font-medium text-gray-700">
-                Organization Name *
-              </label>
-              <input
-                type="text"
+    <div className="container mx-auto max-w-2xl py-12 px-4">
+      <Card>
+        <CardHeader className="text-center">
+          <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-primary/10">
+            <Building2 className="h-8 w-8 text-primary" />
+          </div>
+          <CardTitle className="text-2xl">Create Your Organization</CardTitle>
+          <CardDescription>
+            Start managing your community by creating a new organization
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+            <div className="space-y-2">
+              <Label htmlFor="name">Organization Name *</Label>
+              <Input
                 id="name"
-                name="name"
-                value={formData.name}
-                onChange={handleChange}
-                required
-                className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                placeholder="Acme Inc"
+                {...register("name")}
+                placeholder="e.g., Tech Community, Sports Club"
+                onChange={(e) => {
+                  register("name").onChange(e)
+                  if (!slug) {
+                    generateSlug()
+                  }
+                }}
               />
-              <p className="mt-1 text-sm text-gray-500">
-                This will create a URL like: /organization/{formData.name ? generateSlug(formData.name) : 'your-organization'}
+              {errors.name && (
+                <p className="text-sm text-red-500">{errors.name.message}</p>
+              )}
+              <p className="text-xs text-muted-foreground">
+                This will be displayed to your members
               </p>
             </div>
 
-            <div>
-              <label htmlFor="description" className="block text-sm font-medium text-gray-700">
-                Description
-              </label>
-              <textarea
-                id="description"
-                name="description"
-                value={formData.description}
-                onChange={handleChange}
-                rows={4}
-                className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                placeholder="Tell us about your organization..."
-              />
+            <div className="space-y-2">
+              <Label htmlFor="slug">Organization URL Slug *</Label>
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <div className="flex-1">
+                    <div className="flex items-center rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2">
+                      <span className="text-muted-foreground whitespace-nowrap">
+                        membershome.com/organization/
+                      </span>
+                      <Input
+                        id="slug"
+                        {...register("slug")}
+                        placeholder="your-organization"
+                        className="border-0 bg-transparent p-0 focus-visible:ring-0 focus-visible:ring-offset-0"
+                      />
+                    </div>
+                  </div>
+                  {name && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      onClick={generateSlug}
+                      disabled={!name}
+                      title="Generate from name"
+                    >
+                      <RefreshCw className="h-4 w-4" />
+                    </Button>
+                  )}
+                </div>
+              </div>
+              {errors.slug && (
+                <p className="text-sm text-red-500">{errors.slug.message}</p>
+              )}
+              <p className="text-xs text-muted-foreground">
+                This is your unique URL. Use only lowercase letters, numbers, and hyphens.
+              </p>
             </div>
 
-            {error && (
-              <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
-                {error}
-              </div>
-            )}
+            <div className="space-y-2">
+              <Label htmlFor="description">Description</Label>
+              <Textarea
+                id="description"
+                {...register("description")}
+                placeholder="Tell us about your organization..."
+                rows={4}
+              />
+              {errors.description && (
+                <p className="text-sm text-red-500">{errors.description.message}</p>
+              )}
+            </div>
 
-            <div className="flex justify-end space-x-4">
-              <button
+            <div className="space-y-2">
+              <Label htmlFor="website">Website (Optional)</Label>
+              <div className="relative">
+                <Globe className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  id="website"
+                  {...register("website")}
+                  placeholder="https://example.com"
+                  className="pl-9"
+                />
+              </div>
+              {errors.website && (
+                <p className="text-sm text-red-500">{errors.website.message}</p>
+              )}
+            </div>
+
+            <div className="rounded-lg bg-muted p-4">
+              <div className="flex items-start gap-3">
+                <FileText className="h-5 w-5 text-muted-foreground mt-0.5" />
+                <div className="text-sm">
+                  <p className="font-medium">What happens next?</p>
+                  <p className="text-muted-foreground">
+                    After creating your organization, you'll become the owner. You can then invite members,
+                    create houses, and start managing your community.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex gap-4">
+              <Button
                 type="button"
-                onClick={() => router.push("/organization")}
-                className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50"
+                variant="outline"
+                onClick={() => router.back()}
+                className="flex-1"
+                disabled={isLoading}
               >
                 Cancel
-              </button>
-              <button
-                type="submit"
-                disabled={loading}
-                className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
-              >
-                {loading ? "Creating..." : "Create Organization"}
-              </button>
+              </Button>
+              <Button type="submit" disabled={isLoading} className="flex-1">
+                {isLoading ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Creating...
+                  </>
+                ) : (
+                  "Create Organization"
+                )}
+              </Button>
             </div>
           </form>
-        </div>
-      </div>
+        </CardContent>
+      </Card>
     </div>
   )
 }

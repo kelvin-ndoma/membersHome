@@ -1,34 +1,52 @@
-// components/auth/SignOutButton.tsx
-'use client';
+"use client"
 
-import { signOut } from 'next-auth/react';
-import { LogOut } from 'lucide-react';
-import { useState } from 'react';
+import { useRouter } from "next/navigation"
+import { signOut } from "next-auth/react"
+import { Button } from "@/components/ui/Button"
+import { LogOut } from "lucide-react"
+import { toast } from "sonner"
 
-export default function SignOutButton({ className = '' }: { className?: string }) {
-  const [loading, setLoading] = useState(false);
+interface SignOutButtonProps {
+  variant?: "default" | "destructive" | "outline" | "secondary" | "ghost" | "link"
+  size?: "default" | "sm" | "lg" | "icon"
+  className?: string
+  redirectTo?: string
+}
+
+export function SignOutButton({ 
+  variant = "ghost", 
+  size = "default", 
+  className = "",
+  redirectTo = "/"
+}: SignOutButtonProps) {
+  const router = useRouter()
 
   const handleSignOut = async () => {
-    setLoading(true);
     try {
-      await signOut({ 
-        redirect: true,
-        callbackUrl: '/'
-      });
+      await signOut({ redirect: false })
+      router.push(redirectTo)
+      router.refresh()
+      toast.success("Signed out successfully")
     } catch (error) {
-      console.error('Sign out error:', error);
-      setLoading(false);
+      toast.error("Error signing out")
     }
-  };
+  }
 
   return (
-    <button
+    <Button
+      variant={variant}
+      size={size}
       onClick={handleSignOut}
-      disabled={loading}
-      className={`flex items-center px-4 py-2 text-sm text-red-600 hover:bg-red-50 rounded-lg ${className}`}
+      className={className}
     >
-      <LogOut className="h-4 w-4 mr-2" />
-      {loading ? 'Signing out...' : 'Sign out'}
-    </button>
-  );
+      {size === "icon" ? (
+        <LogOut className="h-4 w-4" />
+      ) : (
+        <>
+          <LogOut className="mr-2 h-4 w-4" />
+          Sign Out
+        </>
+      )}
+    </Button>
+  )
 }

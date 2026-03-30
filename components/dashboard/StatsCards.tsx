@@ -1,100 +1,89 @@
-// components/dashboard/StatsCards.tsx
-import { Users, Calendar, DollarSign, Mail, TrendingUp, Clock } from 'lucide-react';
+"use client"
 
-interface StatCard {
-  title: string;
-  value: number | string;
-  change?: number;
-  icon: React.ReactNode;
-  color: string;
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card"
+import { Users, Building2, Calendar, Ticket, DollarSign, Activity } from "lucide-react"
+
+interface Stat {
+  title: string
+  value: string | number
+  icon: React.ReactNode
+  change?: string
+  trend?: "up" | "down"
+  color?: string
 }
 
 interface StatsCardsProps {
-  stats: {
-    totalMembers: number;
-    activeMembers: number;
-    pendingMembers: number;
-    totalEvents: number;
-    upcomingEvents: number;
-    totalCommunications: number;
-    membershipGrowth: number;
-  };
+  stats: Stat[]
+  className?: string
 }
 
-export default function StatsCards({ stats }: StatsCardsProps) {
-  const statCards: StatCard[] = [
+export function StatsCards({ stats, className }: StatsCardsProps) {
+  const defaultStats: Stat[] = [
     {
-      title: 'Total Members',
-      value: stats.totalMembers,
-      change: stats.membershipGrowth,
-      icon: <Users className="h-6 w-6" />,
-      color: 'blue',
+      title: "Total Members",
+      value: "0",
+      icon: <Users className="h-4 w-4" />,
+      change: "0%",
+      trend: "up",
     },
     {
-      title: 'Active Members',
-      value: stats.activeMembers,
-      icon: <Users className="h-6 w-6" />,
-      color: 'green',
+      title: "Active Houses",
+      value: "0",
+      icon: <Building2 className="h-4 w-4" />,
     },
     {
-      title: 'Pending Members',
-      value: stats.pendingMembers,
-      icon: <Clock className="h-6 w-6" />,
-      color: 'yellow',
+      title: "Upcoming Events",
+      value: "0",
+      icon: <Calendar className="h-4 w-4" />,
     },
     {
-      title: 'Total Events',
-      value: stats.totalEvents,
-      icon: <Calendar className="h-6 w-6" />,
-      color: 'purple',
+      title: "Tickets Sold",
+      value: "0",
+      icon: <Ticket className="h-4 w-4" />,
+      change: "0%",
+      trend: "up",
     },
     {
-      title: 'Upcoming Events',
-      value: stats.upcomingEvents,
-      icon: <Calendar className="h-6 w-6" />,
-      color: 'indigo',
+      title: "Revenue",
+      value: "$0",
+      icon: <DollarSign className="h-4 w-4" />,
     },
     {
-      title: 'Communications',
-      value: stats.totalCommunications,
-      icon: <Mail className="h-6 w-6" />,
-      color: 'pink',
+      title: "Active Members",
+      value: "0",
+      icon: <Activity className="h-4 w-4" />,
     },
-  ];
+  ]
 
-  const colorClasses = {
-    blue: 'bg-blue-100 text-blue-600',
-    green: 'bg-green-100 text-green-600',
-    yellow: 'bg-yellow-100 text-yellow-600',
-    purple: 'bg-purple-100 text-purple-600',
-    indigo: 'bg-indigo-100 text-indigo-600',
-    pink: 'bg-pink-100 text-pink-600',
-  };
+  const displayStats = stats.length > 0 ? stats : defaultStats
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-      {statCards.map((stat, index) => (
-        <div key={index} className="bg-white rounded-lg shadow p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-gray-600">{stat.title}</p>
-              <p className="text-2xl font-bold text-gray-900 mt-2">{stat.value}</p>
-              {stat.change !== undefined && (
-                <div className="flex items-center mt-1">
-                  <TrendingUp className={`h-4 w-4 ${stat.change >= 0 ? 'text-green-500' : 'text-red-500'} mr-1`} />
-                  <span className={`text-sm ${stat.change >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                    {stat.change >= 0 ? '+' : ''}{stat.change}%
-                  </span>
-                  <span className="text-sm text-gray-500 ml-2">from last month</span>
-                </div>
-              )}
-            </div>
-            <div className={`p-3 rounded-lg ${colorClasses[stat.color as keyof typeof colorClasses]}`}>
+    <div className={cn("grid gap-4 md:grid-cols-2 lg:grid-cols-3", className)}>
+      {displayStats.map((stat, index) => (
+        <Card key={index}>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">{stat.title}</CardTitle>
+            <div className={cn("h-4 w-4 text-muted-foreground", stat.color)}>
               {stat.icon}
             </div>
-          </div>
-        </div>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{stat.value}</div>
+            {stat.change && (
+              <p className={cn(
+                "text-xs",
+                stat.trend === "up" ? "text-green-600" : "text-red-600"
+              )}>
+                {stat.trend === "up" ? "↑" : "↓"} {stat.change} from last month
+              </p>
+            )}
+          </CardContent>
+        </Card>
       ))}
     </div>
-  );
+  )
+}
+
+function cn(...classes: (string | undefined)[]) {
+  return classes.filter(Boolean).join(" ")
 }

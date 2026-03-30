@@ -1,90 +1,105 @@
-// components/dashboard/DashboardHeader.tsx
-import { Bell, Settings, HelpCircle, Search, ChevronDown } from 'lucide-react';
-import Avatar from '../ui/Avatar';
+"use client"
+
+import { useSession } from "next-auth/react"
+import Link from "next/link"
+import { Bell, Settings, User, LogOut, ChevronDown, Home } from "lucide-react"
+import { Button } from "@/components/ui/Button"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/Avatar"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/Dropdown"
+import { SignOutButton } from "@/components/auth/SignOutButton"
 
 interface DashboardHeaderProps {
-  organization: {
-    name: string;
-    logoUrl?: string;
-    primaryColor?: string;
-    plan: string;
-  };
-  userRole: string;
+  organizationName?: string
+  organizationSlug?: string
+  showBackToSite?: boolean
 }
 
-export default function DashboardHeader({ organization, userRole }: DashboardHeaderProps) {
+export function DashboardHeader({ 
+  organizationName, 
+  organizationSlug,
+  showBackToSite = true 
+}: DashboardHeaderProps) {
+  const { data: session } = useSession()
+
+  const userInitials = session?.user?.name
+    ? session.user.name
+        .split(" ")
+        .map((n) => n[0])
+        .join("")
+        .toUpperCase()
+    : "U"
+
   return (
-    <header className="bg-white shadow border-b">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex justify-between items-center py-4">
-          {/* Left: Organization Info */}
-          <div className="flex items-center space-x-4">
-            {organization.logoUrl ? (
-              <img
-                src={organization.logoUrl}
-                alt={organization.name}
-                className="h-10 w-10 rounded-lg"
-              />
-            ) : (
-              <div 
-                className="h-10 w-10 rounded-lg flex items-center justify-center text-white font-bold"
-                style={{ backgroundColor: organization.primaryColor || '#3B82F6' }}
-              >
-                {organization.name.charAt(0)}
-              </div>
+    <header className="sticky top-0 z-40 border-b bg-background">
+      <div className="flex h-16 items-center justify-between px-4 md:px-6">
+        <div className="flex items-center gap-4">
+          <Link href={organizationSlug ? `/organization/${organizationSlug}/dashboard` : "/"} className="flex items-center gap-2">
+            <span className="text-xl font-bold text-primary">MembersHome</span>
+            {organizationName && (
+              <>
+                <span className="text-muted-foreground">/</span>
+                <span className="text-sm font-medium">{organizationName}</span>
+              </>
             )}
-            <div>
-              <h1 className="text-xl font-bold text-gray-900">{organization.name}</h1>
-              <div className="flex items-center space-x-2 text-sm text-gray-600">
-                <span className="px-2 py-0.5 bg-gray-100 rounded text-xs">
-                  {organization.plan} Plan
+          </Link>
+        </div>
+
+        <div className="flex items-center gap-2 md:gap-4">
+          <Button variant="ghost" size="icon" className="relative">
+            <Bell className="h-5 w-5" />
+          </Button>
+
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" className="flex items-center gap-2 px-2">
+                <Avatar className="h-8 w-8">
+                  <AvatarImage src={session?.user?.image || ""} />
+                  <AvatarFallback>{userInitials}</AvatarFallback>
+                </Avatar>
+                <span className="hidden md:inline-block">
+                  {session?.user?.name || "User"}
                 </span>
-                <span>•</span>
-                <span>{userRole.replace('ORG_', '').toLowerCase()}</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Right: User Actions */}
-          <div className="flex items-center space-x-4">
-            {/* Search */}
-            <div className="relative hidden md:block">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-5 w-5" />
-              <input
-                type="text"
-                placeholder="Search..."
-                className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              />
-            </div>
-
-            {/* Notifications */}
-            <button className="relative p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg">
-              <Bell className="h-5 w-5" />
-              <span className="absolute top-1 right-1 h-2 w-2 bg-red-500 rounded-full"></span>
-            </button>
-
-            {/* Help */}
-            <button className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg">
-              <HelpCircle className="h-5 w-5" />
-            </button>
-
-            {/* Settings */}
-            <button className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg">
-              <Settings className="h-5 w-5" />
-            </button>
-
-            {/* User Avatar */}
-            <div className="flex items-center space-x-3">
-              <Avatar
-                src={null}
-                name="John Doe"
-                size="sm"
-              />
-              <ChevronDown className="h-4 w-4 text-gray-500" />
-            </div>
-          </div>
+                <ChevronDown className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuLabel>My Account</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem asChild>
+                <Link href={organizationSlug ? `/organization/${organizationSlug}/profile` : "/profile"} className="cursor-pointer">
+                  <User className="mr-2 h-4 w-4" />
+                  Profile
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <Link href={organizationSlug ? `/organization/${organizationSlug}/settings` : "/settings"} className="cursor-pointer">
+                  <Settings className="mr-2 h-4 w-4" />
+                  Settings
+                </Link>
+              </DropdownMenuItem>
+              {showBackToSite && (
+                <DropdownMenuItem asChild>
+                  <Link href="/" className="cursor-pointer">
+                    <Home className="mr-2 h-4 w-4" />
+                    Back to Site
+                  </Link>
+                </DropdownMenuItem>
+              )}
+              <DropdownMenuSeparator />
+              <DropdownMenuItem asChild className="text-red-600">
+                <SignOutButton variant="ghost" size="sm" className="w-full justify-start p-0" />
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
     </header>
-  );
+  )
 }

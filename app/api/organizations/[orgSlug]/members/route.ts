@@ -1,224 +1,170 @@
-// app/api/organizations/[orgSlug]/members/route.ts
-import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
+import { NextResponse } from "next/server"
 import { prisma } from "@/lib/db"
-import { z } from 'zod';
+import { requireOrgAccess } from "@/lib/auth"
+import { generateInviteToken, hashToken } from "@/lib/utils/tokens"
+import { sendInvitationEmail } from "@/lib/email"
 
-const inviteSchema = z.object({
-  email: z.string().email(),
-  organizationRole: z.enum(['MEMBER', 'ORG_ADMIN']).default('MEMBER'),
-  houseId: z.string().optional(),
-  houseRole: z.enum(['HOUSE_MEMBER', 'HOUSE_ADMIN']).optional(),
-});
-
-// GET /api/organizations/[orgSlug]/members - List organization members
 export async function GET(
-  request: NextRequest,
-  { params }: { params: Promise<{ orgSlug: string }> }
+  req: Request,
+  { params }: { params: { orgSlug: string } }
 ) {
   try {
-    const session = await getServerSession();
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    await requireOrgAccess(params.orgSlug)
+
+    const { searchParams } = new URL(req.url)
+    const page = parseInt(searchParams.get("page") || "1")
+    const pageSize = parseInt(searchParams.get("pageSize") || "10")
+    const search = searchParams.get("search") || ""
+    const role = searchParams.get("role")
+    const status = searchParams.get("status")
+
+    const where: any = {
+      organization: { slug: params.orgSlug },
     }
 
-    const { orgSlug } = await params;
-
-    const user = await prisma.user.findUnique({
-      where: { email: session.user.email },
-    });
-
-    if (!user) {
-      return NextResponse.json({ error: 'User not found' }, { status: 404 });
+    if (search) {
+      where.user = {
+        OR: [
+          { name: { contains: search, mode: "insensitive" } },
+          { email: { contains: search, mode: "insensitive" } },
+        ],
+      }
     }
 
-    // Check if user has access to this organization
-    const membership = await prisma.membership.findFirst({
-      where: {
-        userId: user.id,
-        organization: { slug: orgSlug },
-        status: 'ACTIVE',
-      },
-    });
+    if (role) where.organizationRole = role
+    if (status) where.status = status
 
-    if (!membership) {
-      return NextResponse.json({ error: 'Access denied' }, { status: 403 });
-    }
-
-    const members = await prisma.membership.findMany({
-      where: {
-        organization: { slug: orgSlug },
-        status: { in: ['ACTIVE', 'PENDING'] },
-      },
-      include: {
-        user: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            image: true,
+    const [members, total] = await Promise.all([
+      prisma.membership.findMany({
+        where,
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+        orderBy: { joinedAt: "desc" },
+        include: {
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              image: true,
+              phone: true,
+            },
+          },
+          houseMemberships: {
+            include: {
+              house: {
+                select: {
+                  id: true,
+                  name: true,
+                  slug: true,
+                },
+              },
+            },
           },
         },
-        house: {
-          select: {
-            id: true,
-            name: true,
-            slug: true,
-          },
-        },
-      },
-      orderBy: { joinedAt: 'desc' },
-    });
+      }),
+      prisma.membership.count({ where }),
+    ])
 
-    return NextResponse.json(members);
-  } catch (error) {
-    console.error('GET members error:', error);
+    return NextResponse.json({
+      members,
+      total,
+      page,
+      pageSize,
+      totalPages: Math.ceil(total / pageSize),
+    })
+  } catch (error: any) {
+    console.error("Error fetching members:", error)
     return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+      { error: error?.message || "Internal server error" },
+      { status: error?.status || 500 }
+    )
   }
 }
 
-// POST /api/organizations/[orgSlug]/members - Invite new member
 export async function POST(
-  request: NextRequest,
-  { params }: { params: Promise<{ orgSlug: string }> }
+  req: Request,
+  { params }: { params: { orgSlug: string } }
 ) {
   try {
-    const session = await getServerSession();
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    const { membership: currentMembership } = await requireOrgAccess(params.orgSlug)
 
-    const { orgSlug } = await params;
-
-    const user = await prisma.user.findUnique({
-      where: { email: session.user.email },
-    });
-
-    if (!user) {
-      return NextResponse.json({ error: 'User not found' }, { status: 404 });
-    }
-
-    // Check if user has admin/owner access to this organization
-    const membership = await prisma.membership.findFirst({
-      where: {
-        userId: user.id,
-        organization: { slug: orgSlug },
-        status: 'ACTIVE',
-        organizationRole: { in: ['ORG_ADMIN', 'ORG_OWNER'] },
-      },
-    });
-
-    if (!membership) {
-      return NextResponse.json({ error: 'Access denied' }, { status: 403 });
-    }
-
-    const body = await request.json();
-    const validatedData = inviteSchema.safeParse(body);
-
-    if (!validatedData.success) {
-      // Get validation errors from issues property
-      const errors = validatedData.error.issues.map(issue => ({
-        path: issue.path.join('.'),
-        message: issue.message
-      }));
-      
+    if (
+      currentMembership.organizationRole !== "ORG_OWNER" &&
+      currentMembership.organizationRole !== "ORG_ADMIN"
+    ) {
       return NextResponse.json(
-        { 
-          error: 'Validation failed',
-          details: errors
-        }, 
-        { status: 400 }
-      );
+        { error: "Insufficient permissions" },
+        { status: 403 }
+      )
     }
 
-    // Get organization
+    const body = await req.json()
+    const { email, role = "MEMBER" } = body
+
     const organization = await prisma.organization.findUnique({
-      where: { slug: orgSlug },
-    });
+      where: { slug: params.orgSlug },
+    })
 
     if (!organization) {
-      return NextResponse.json({ error: 'Organization not found' }, { status: 404 });
+      return NextResponse.json(
+        { error: "Organization not found" },
+        { status: 404 }
+      )
     }
 
-    // Check if user exists
-    let invitedUser = await prisma.user.findUnique({
-      where: { email: validatedData.data.email },
-    });
+    let user = await prisma.user.findUnique({
+      where: { email },
+    })
 
-    // Create user if doesn't exist
-    if (!invitedUser) {
-      invitedUser = await prisma.user.create({
+    if (!user) {
+      user = await prisma.user.create({
         data: {
-          email: validatedData.data.email,
-          name: validatedData.data.email.split('@')[0],
+          email,
+          name: email.split("@")[0],
         },
-      });
+      })
     }
 
-    // Check if user is already a member
-    const existingMembership = await prisma.membership.findFirst({
+    const existingMembership = await prisma.membership.findUnique({
       where: {
-        userId: invitedUser.id,
-        organizationId: organization.id,
+        userId_organizationId: {
+          userId: user.id,
+          organizationId: organization.id,
+        },
       },
-    });
+    })
 
     if (existingMembership) {
       return NextResponse.json(
-        { error: 'User is already a member of this organization' },
+        { error: "User is already a member of this organization" },
         { status: 400 }
-      );
+      )
     }
 
-    // Create membership
-    const newMembership = await prisma.membership.create({
+    const rawInviteToken = generateInviteToken()
+    const hashedInviteToken = hashToken(rawInviteToken)
+
+    const membership = await prisma.membership.create({
       data: {
-        userId: invitedUser.id,
+        userId: user.id,
         organizationId: organization.id,
-        houseId: validatedData.data.houseId,
-        organizationRole: validatedData.data.organizationRole,
-        houseRole: validatedData.data.houseRole,
-        status: 'PENDING',
-        invitedBy: user.id,
-        invitationToken: crypto.randomUUID(),
-        invitationSentAt: new Date(),
+        organizationRole: role,
+        status: "PENDING",
+        invitedBy: currentMembership.userId,
+        invitedAt: new Date(),
+        invitationToken: hashedInviteToken,
       },
-      include: {
-        user: {
-          select: {
-            name: true,
-            email: true,
-          },
-        },
-        house: {
-          select: {
-            name: true,
-          },
-        },
-      },
-    });
+    })
 
-    return NextResponse.json(newMembership, { status: 201 });
-  } catch (error) {
-    console.error('POST members error:', error);
-    
-    // Handle specific errors
-    if (error instanceof Error) {
-      // Prisma unique constraint error
-      if (error.message.includes('Unique constraint failed')) {
-        return NextResponse.json(
-          { error: 'Duplicate entry. User may already have a pending invitation.' },
-          { status: 400 }
-        );
-      }
-    }
-    
+    await sendInvitationEmail(email, organization.name, rawInviteToken)
+
+    return NextResponse.json(membership, { status: 201 })
+  } catch (error: any) {
+    console.error("Error inviting member:", error)
     return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+      { error: error?.message || "Internal server error" },
+      { status: error?.status || 500 }
+    )
   }
 }

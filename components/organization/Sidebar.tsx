@@ -1,308 +1,249 @@
-// components/organization/Sidebar.tsx - Updated (Remove house creation)
-'use client';
+"use client"
 
-import { useState, useEffect } from 'react';
-import Link from 'next/link';
-import { usePathname } from 'next/navigation';
-import { 
-  Users, 
-  ShoppingCart, 
-  Calendar, 
-  Clock, 
-  Folder,
-  Award,
-  Ticket,
-  FileText,
-  ChevronDown,
+import Link from "next/link"
+import { usePathname } from "next/navigation"
+import { cn } from "@/lib/utils"
+import {
+  LayoutDashboard,
+  Users,
+  Home,
+  Calendar,
+  ShoppingCart,
+  CreditCard,
   Mail,
-  MessageSquare,
   BarChart3,
   Settings,
-  ChevronLeft,
-  ChevronRight,
-  LayoutDashboard,
-  Bell,
-  Tag,
-  Megaphone,
-  FormInput,
-  Trophy,
-  Star,
-  Search,
-  Home,
-  Building,
-  Filter,
-  Lock
-} from 'lucide-react';
+  LogOut,
+  Ticket,
+  UserCheck,
+  X,
+  Building2,
+} from "lucide-react"
+import { SignOutButton } from "@/components/auth/SignOutButton"
 
-interface SidebarProps {
-  orgSlug: string;
-  userRole: string;
-  currentHouseSlug?: string;
-  userPlatformRole?: string;
+interface OrganizationSidebarProps {
+  organizationSlug: string
+  userRole?: string
+  isOpen?: boolean
+  onClose?: () => void
 }
 
-interface House {
-  id: string;
-  name: string;
-  slug: string;
-}
+export function OrganizationSidebar({
+  organizationSlug,
+  userRole,
+  isOpen = false,
+  onClose,
+}: OrganizationSidebarProps) {
+  const pathname = usePathname()
 
-const menuItems = [
-  { 
-    group: 'CRM', 
-    items: [
-      { name: 'Dashboard', icon: LayoutDashboard, path: 'dashboard', roles: ['MEMBER', 'ORG_ADMIN', 'ORG_OWNER'] },
-      { name: 'People', icon: Users, path: 'people', roles: ['MEMBER', 'ORG_ADMIN', 'ORG_OWNER'] },
-    ] 
-  },
-  { 
-    group: 'Operations', 
-    items: [
-      { name: 'Commerce', icon: ShoppingCart, path: 'commerce', roles: ['ORG_ADMIN', 'ORG_OWNER'] },
-      { name: 'Subscriptions', icon: Bell, path: 'subscriptions', roles: ['ORG_ADMIN', 'ORG_OWNER'] },
-      { name: 'Events', icon: Calendar, path: 'events', roles: ['MEMBER', 'ORG_ADMIN', 'ORG_OWNER'] },
-      { name: 'Scheduler', icon: Clock, path: 'scheduler', roles: ['ORG_ADMIN', 'ORG_OWNER'] },
-      { name: 'Directory', icon: Folder, path: 'directory', roles: ['MEMBER', 'ORG_ADMIN', 'ORG_OWNER'] },
-    ] 
-  },
-  { 
-    group: 'Membership & Loyalty', 
-    items: [
-      { name: 'Memberships', icon: Users, path: 'memberships', roles: ['ORG_ADMIN', 'ORG_OWNER'] },
-      { name: 'Loyalty', icon: Award, path: 'loyalty', roles: ['ORG_ADMIN', 'ORG_OWNER'] },
-      { name: 'Vouchers', icon: Ticket, path: 'vouchers', roles: ['ORG_ADMIN', 'ORG_OWNER'] },
-    ] 
-  },
-  { 
-    group: 'Content & Engagement', 
-    items: [
-      { name: 'Content & Blog', icon: FileText, path: 'content', roles: ['ORG_ADMIN', 'ORG_OWNER'] },
-      { name: 'Applications', icon: FormInput, path: 'applications', roles: ['ORG_ADMIN', 'ORG_OWNER'] },
-      { name: 'Forms', icon: FormInput, path: 'forms', roles: ['ORG_ADMIN', 'ORG_OWNER'] },
-      { name: 'Contests', icon: Trophy, path: 'contests', roles: ['ORG_ADMIN', 'ORG_OWNER'] },
-      { name: 'Reviews', icon: Star, path: 'reviews', roles: ['MEMBER', 'ORG_ADMIN', 'ORG_OWNER'] },
-    ] 
-  },
-  { 
-    group: 'Marketing', 
-    items: [
-      { name: 'Newsletters & Notifications', icon: Mail, path: 'newsletters', roles: ['ORG_ADMIN', 'ORG_OWNER'] },
-      { name: 'SMS', icon: MessageSquare, path: 'sms', roles: ['ORG_ADMIN', 'ORG_OWNER'] },
-      { name: 'Campaigns', icon: Megaphone, path: 'campaigns', roles: ['ORG_ADMIN', 'ORG_OWNER'] },
-      { name: 'Keywords', icon: Tag, path: 'keywords', roles: ['ORG_ADMIN', 'ORG_OWNER'] },
-    ] 
-  },
-  { 
-    group: 'Analytics', 
-    items: [
-      { name: 'Reports', icon: BarChart3, path: 'reports', roles: ['ORG_ADMIN', 'ORG_OWNER'] },
-    ] 
-  },
-  { 
-    group: 'Settings', 
-    items: [
-      { name: 'Settings', icon: Settings, path: 'settings', roles: ['ORG_ADMIN', 'ORG_OWNER'] },
-    ] 
-  },
-];
+  const isAdmin = userRole === "ORG_ADMIN" || userRole === "ORG_OWNER"
 
-export default function Sidebar({ 
-  orgSlug, 
-  userRole, 
-  currentHouseSlug,
-  userPlatformRole = 'USER'
-}: SidebarProps) {
-  const pathname = usePathname();
-  const [collapsed, setCollapsed] = useState(false);
-  const [houses, setHouses] = useState<House[]>([]);
-  const [selectedHouse, setSelectedHouse] = useState<House | null>(null);
+  const routes = [
+    {
+      href: `/organization/${organizationSlug}/dashboard`,
+      label: "Dashboard",
+      icon: LayoutDashboard,
+      active: pathname === `/organization/${organizationSlug}/dashboard`,
+    },
+    {
+      href: `/organization/${organizationSlug}/people`,
+      label: "Members",
+      icon: Users,
+      active:
+        pathname === `/organization/${organizationSlug}/people` ||
+        pathname.startsWith(`/organization/${organizationSlug}/people/`),
+    },
+    {
+      href: `/organization/${organizationSlug}/houses`,
+      label: "Houses",
+      icon: Home,
+      active:
+        pathname === `/organization/${organizationSlug}/houses` ||
+        pathname.startsWith(`/organization/${organizationSlug}/houses/`),
+    },
+    {
+      href: `/organization/${organizationSlug}/events`,
+      label: "Events",
+      icon: Calendar,
+      active:
+        pathname === `/organization/${organizationSlug}/events` ||
+        pathname.startsWith(`/organization/${organizationSlug}/events/`),
+    },
+    {
+      href: `/organization/${organizationSlug}/commerce`,
+      label: "Commerce",
+      icon: ShoppingCart,
+      active:
+        pathname === `/organization/${organizationSlug}/commerce` ||
+        pathname.startsWith(`/organization/${organizationSlug}/commerce/`),
+    },
+    {
+      href: `/organization/${organizationSlug}/memberships`,
+      label: "Memberships",
+      icon: UserCheck,
+      active:
+        pathname === `/organization/${organizationSlug}/memberships` ||
+        pathname.startsWith(`/organization/${organizationSlug}/memberships/`),
+    },
+    {
+      href: `/organization/${organizationSlug}/tickets`,
+      label: "Tickets",
+      icon: Ticket,
+      active:
+        pathname === `/organization/${organizationSlug}/tickets` ||
+        pathname.startsWith(`/organization/${organizationSlug}/tickets/`),
+    },
+    {
+      href: `/organization/${organizationSlug}/communications`,
+      label: "Communications",
+      icon: Mail,
+      active:
+        pathname === `/organization/${organizationSlug}/communications` ||
+        pathname.startsWith(`/organization/${organizationSlug}/communications/`),
+    },
+    {
+      href: `/organization/${organizationSlug}/reports`,
+      label: "Reports",
+      icon: BarChart3,
+      active:
+        pathname === `/organization/${organizationSlug}/reports` ||
+        pathname.startsWith(`/organization/${organizationSlug}/reports/`),
+    },
+  ]
 
-  useEffect(() => {
-    fetchHouses();
-  }, [orgSlug]);
+  const bottomRoutes = [
+    {
+      href: `/organization/${organizationSlug}/billing`,
+      label: "Billing",
+      icon: CreditCard,
+      active:
+        pathname === `/organization/${organizationSlug}/billing` ||
+        pathname.startsWith(`/organization/${organizationSlug}/billing/`),
+      show: isAdmin,
+    },
+    {
+      href: `/organization/${organizationSlug}/settings`,
+      label: "Settings",
+      icon: Settings,
+      active:
+        pathname === `/organization/${organizationSlug}/settings` ||
+        pathname.startsWith(`/organization/${organizationSlug}/settings/`),
+      show: isAdmin,
+    },
+  ]
 
-  useEffect(() => {
-    if (currentHouseSlug && houses.length > 0) {
-      const house = houses.find(h => h.slug === currentHouseSlug);
-      if (house) {
-        setSelectedHouse(house);
-      }
-    }
-  }, [currentHouseSlug, houses]);
+  const NavLink = ({
+    href,
+    label,
+    icon: Icon,
+    active,
+  }: {
+    href: string
+    label: string
+    icon: any
+    active: boolean
+  }) => (
+    <Link
+      href={href}
+      onClick={onClose}
+      className={cn(
+        "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
+        active
+          ? "bg-primary text-primary-foreground"
+          : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+      )}
+    >
+      <Icon className="h-5 w-5 shrink-0" />
+      <span>{label}</span>
+    </Link>
+  )
 
-  const fetchHouses = async () => {
-    try {
-      const response = await fetch(`/api/organizations/${orgSlug}/houses`);
-      if (response.ok) {
-        const data = await response.json();
-        setHouses(data);
-      }
-    } catch (error) {
-      console.error('Failed to fetch houses:', error);
-    }
-  };
+  const sidebarContent = (
+    <div className="flex h-full flex-col bg-background">
+      <div className="flex h-16 items-center justify-between border-b px-4">
+        <Link
+          href={`/organization/${organizationSlug}/dashboard`}
+          className="flex items-center gap-2 font-semibold"
+          onClick={onClose}
+        >
+          <Building2 className="h-5 w-5 text-primary" />
+          <span className="text-lg">MembersHome</span>
+        </Link>
 
-  const isActive = (path: string) => {
-    return pathname?.includes(`/organization/${orgSlug}/${path}`);
-  };
-
-  const filteredMenuItems = menuItems.map(group => ({
-    ...group,
-    items: group.items.filter(item => item.roles.includes(userRole))
-  })).filter(group => group.items.length > 0);
-
-  const sidebarWidth = collapsed ? 'w-20' : 'w-64';
-  const isPlatformAdmin = userPlatformRole === 'PLATFORM_ADMIN';
-
-  return (
-    <div className={`bg-gray-900 text-white h-screen flex flex-col ${sidebarWidth} transition-all duration-300 flex-shrink-0`}>
-      {/* Header */}
-      <div className="p-4 border-b border-gray-800 flex-shrink-0">
-        {!collapsed ? (
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-3">
-              <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center">
-                <Building className="h-5 w-5 text-white" />
-              </div>
-              <div>
-                <h2 className="text-sm font-semibold truncate">Organization</h2>
-                <p className="text-xs text-gray-400 truncate">Management Suite</p>
-              </div>
-            </div>
-            <button
-              onClick={() => setCollapsed(!collapsed)}
-              className="p-1 hover:bg-gray-800 rounded"
-              aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-            >
-              <ChevronLeft className="h-4 w-4" />
-            </button>
-          </div>
-        ) : (
-          <div className="flex justify-center">
-            <button
-              onClick={() => setCollapsed(!collapsed)}
-              className="p-2 hover:bg-gray-800 rounded"
-              aria-label="Expand sidebar"
-            >
-              <ChevronRight className="h-5 w-5" />
-            </button>
-          </div>
-        )}
+        <button
+          type="button"
+          onClick={onClose}
+          className="rounded-md p-2 text-muted-foreground hover:bg-accent hover:text-accent-foreground md:hidden"
+          aria-label="Close sidebar"
+        >
+          <X className="h-5 w-5" />
+        </button>
       </div>
 
-      {/* House Selector (only when expanded) */}
-      {!collapsed && houses.length > 0 && (
-        <div className="p-4 border-b border-gray-800 flex-shrink-0">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-medium text-gray-400">Current House</span>
-            {isPlatformAdmin && (
-              <Link
-                href={`/admin/organizations/${orgSlug}/houses/create`}
-                className="text-xs text-green-400 hover:text-green-300"
-                title="Create House (Admin Only)"
-              >
-                <Home className="h-3 w-3" />
-              </Link>
-            )}
-          </div>
-          <div className="relative">
-            <select
-              value={selectedHouse?.id || ''}
-              onChange={(e) => {
-                const house = houses.find(h => h.id === e.target.value);
-                if (house) {
-                  setSelectedHouse(house);
-                  window.location.href = `/organization/${orgSlug}/houses/${house.slug}/dashboard`;
-                }
-              }}
-              className="w-full pl-3 pr-8 py-2 bg-gray-800 border border-gray-700 rounded text-sm text-white focus:outline-none focus:ring-1 focus:ring-blue-500 appearance-none"
-            >
-              <option value="">All Houses</option>
-              {houses.map((house) => (
-                <option key={house.id} value={house.id}>
-                  {house.name}
-                </option>
-              ))}
-            </select>
-            <div className="absolute right-2 top-1/2 transform -translate-y-1/2 pointer-events-none">
-              <ChevronDown className="h-4 w-4 text-gray-400" />
-            </div>
-          </div>
-          {selectedHouse ? (
-            <div className="mt-2 text-xs text-gray-400">
-              <Home className="h-3 w-3 inline mr-1" />
-              {selectedHouse.name}
-            </div>
-          ) : (
-            <div className="mt-2 text-xs text-gray-400">
-              <Lock className="h-3 w-3 inline mr-1" />
-              Organization View
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Navigation - Scrollable area */}
-      <nav className="flex-1 overflow-y-auto p-4">
-        {filteredMenuItems.map((group, groupIndex) => (
-          <div key={groupIndex} className="mb-6">
-            {!collapsed && group.group && (
-              <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
-                {group.group}
-              </h3>
-            )}
-            <ul className="space-y-1">
-              {group.items.map((item, itemIndex) => {
-                const Icon = item.icon;
-                const active = isActive(item.path);
-                return (
-                  <li key={itemIndex}>
-                    <Link
-                      href={`/organization/${orgSlug}/${item.path}`}
-                      className={`flex items-center ${collapsed ? 'justify-center' : ''} px-3 py-2 rounded-lg text-sm transition-colors ${
-                        active
-                          ? 'bg-blue-600 text-white'
-                          : 'text-gray-300 hover:bg-gray-800 hover:text-white'
-                      }`}
-                      title={collapsed ? item.name : undefined}
-                    >
-                      <Icon className="h-5 w-5 flex-shrink-0" />
-                      {!collapsed && <span className="ml-3 truncate">{item.name}</span>}
-                    </Link>
-                  </li>
-                );
-              })}
-            </ul>
-          </div>
+      <nav className="flex-1 space-y-1 overflow-y-auto p-4">
+        {routes.map((route) => (
+          <NavLink
+            key={route.href}
+            href={route.href}
+            label={route.label}
+            icon={route.icon}
+            active={route.active}
+          />
         ))}
+
+        {bottomRoutes.some((route) => route.show !== false) && (
+          <>
+            <div className="my-4 border-t" />
+            {bottomRoutes
+              .filter((route) => route.show !== false)
+              .map((route) => (
+                <NavLink
+                  key={route.href}
+                  href={route.href}
+                  label={route.label}
+                  icon={route.icon}
+                  active={route.active}
+                />
+              ))}
+          </>
+        )}
       </nav>
 
-      {/* Footer */}
-      <div className="p-4 border-t border-gray-800 flex-shrink-0">
-        {!collapsed ? (
-          <div className="text-center">
-            <p className="text-xs text-gray-400">© 2024 CRM Platform</p>
-            <p className="text-xs text-gray-500 mt-1">v1.0.0</p>
-            {isPlatformAdmin && (
-              <div className="mt-2">
-                <Link
-                  href="/admin"
-                  className="text-xs text-purple-400 hover:text-purple-300 inline-flex items-center"
-                >
-                  <Lock className="h-3 w-3 mr-1" />
-                  Admin Panel
-                </Link>
-              </div>
-            )}
-          </div>
-        ) : (
-          <div className="flex justify-center">
-            <div className="h-8 w-8 bg-blue-600 rounded-full flex items-center justify-center">
-              <span className="text-xs font-bold">C</span>
-            </div>
-          </div>
-        )}
+      <div className="border-t p-4">
+        <Link
+          href="/"
+          onClick={onClose}
+          className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+        >
+          <LogOut className="h-5 w-5" />
+          Back to Site
+        </Link>
+
+        <SignOutButton
+          variant="ghost"
+          className="mt-2 w-full justify-start gap-3 text-red-600 hover:bg-red-50 hover:text-red-700"
+        />
       </div>
     </div>
-  );
+  )
+
+  return (
+    <>
+      <aside className="hidden h-screen w-64 shrink-0 border-r bg-background md:block">
+        {sidebarContent}
+      </aside>
+
+      {isOpen && (
+        <>
+          <div
+            className="fixed inset-0 z-40 bg-black/50 md:hidden"
+            onClick={onClose}
+          />
+          <aside className="fixed inset-y-0 left-0 z-50 w-64 border-r bg-background md:hidden">
+            {sidebarContent}
+          </aside>
+        </>
+      )}
+    </>
+  )
 }
