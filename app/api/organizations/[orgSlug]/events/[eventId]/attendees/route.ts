@@ -1,21 +1,40 @@
 import { NextResponse } from "next/server"
+import { getServerSession } from "next-auth"
+import { authOptions } from "@/lib/auth/config"
 import { prisma } from "@/lib/db"
-import { requireOrgAccess } from "@/lib/auth"
 
 export async function GET(
   req: Request,
-  { params }: { params: { orgSlug: string; eventId: string } }
+  { params }: { params: Promise<{ orgSlug: string; eventId: string }> }
 ) {
   try {
-    await requireOrgAccess(params.orgSlug)
+    const session = await getServerSession(authOptions)
+    const { orgSlug, eventId } = await params
 
-    const { searchParams } = new URL(req.url)
-    const page = parseInt(searchParams.get("page") || "1")
-    const pageSize = parseInt(searchParams.get("pageSize") || "10")
-    const status = searchParams.get("status")
+    if (!session?.user?.id) {
+      return NextResponse.json(
+        { error: "Unauthorized" },
+        { status: 401 }
+      )
+    }
+
+    const membership = await prisma.membership.findFirst({
+      where: {
+        userId: session.user.id,
+        organization: { slug: orgSlug },
+        status: "ACTIVE",
+      },
+    })
+
+    if (!membership) {
+      return NextResponse.json(
+        { error: "Forbidden" },
+        { status: 403 }
+      )
+    }
 
     const organization = await prisma.organization.findUnique({
-      where: { slug: params.orgSlug },
+      where: { slug: orgSlug },
       select: { id: true },
     })
 
@@ -26,12 +45,17 @@ export async function GET(
       )
     }
 
+    const { searchParams } = new URL(req.url)
+    const page = parseInt(searchParams.get("page") || "1")
+    const pageSize = parseInt(searchParams.get("pageSize") || "10")
+    const status = searchParams.get("status")
+
     const where: any = {
-      eventId: params.eventId,
+      eventId,
       organizationId: organization.id,
     }
 
-    if (status) {
+    if (status && status !== "all") {
       where.status = status
     }
 
@@ -62,7 +86,7 @@ export async function GET(
 
     const stats = await prisma.rSVP.aggregate({
       where: {
-        eventId: params.eventId,
+        eventId,
         organizationId: organization.id,
       },
       _count: true,
@@ -72,7 +96,7 @@ export async function GET(
     })
 
     return NextResponse.json({
-      attendees: attendees.map(a => ({
+      attendees: attendees.map((a) => ({
         id: a.id,
         status: a.status,
         guestsCount: a.guestsCount,
@@ -100,16 +124,39 @@ export async function GET(
 
 export async function PATCH(
   req: Request,
-  { params }: { params: { orgSlug: string; eventId: string } }
+  { params }: { params: Promise<{ orgSlug: string; eventId: string }> }
 ) {
   try {
-    const { membership } = await requireOrgAccess(params.orgSlug)
+    const session = await getServerSession(authOptions)
+    const { orgSlug, eventId } = await params
+
+    if (!session?.user?.id) {
+      return NextResponse.json(
+        { error: "Unauthorized" },
+        { status: 401 }
+      )
+    }
+
+    const membership = await prisma.membership.findFirst({
+      where: {
+        userId: session.user.id,
+        organization: { slug: orgSlug },
+        organizationRole: { in: ["ORG_ADMIN", "ORG_OWNER"] },
+      },
+    })
+
+    if (!membership) {
+      return NextResponse.json(
+        { error: "Forbidden" },
+        { status: 403 }
+      )
+    }
 
     const body = await req.json()
     const { rsvpId, checkedIn } = body
 
     const organization = await prisma.organization.findUnique({
-      where: { slug: params.orgSlug },
+      where: { slug: orgSlug },
       select: { id: true },
     })
 
@@ -123,7 +170,7 @@ export async function PATCH(
     const rsvp = await prisma.rSVP.update({
       where: {
         id: rsvpId,
-        eventId: params.eventId,
+        eventId,
         organizationId: organization.id,
       },
       data: {

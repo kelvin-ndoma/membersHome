@@ -1,3 +1,4 @@
+// app/organization/create/page.tsx
 "use client"
 
 import { useState, useEffect } from "react"
@@ -11,8 +12,10 @@ import { Input } from "@/components/ui/Input"
 import { Textarea } from "@/components/ui/Textarea"
 import { Label } from "@/components/ui/Label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/Card"
+import { Badge } from "@/components/ui/Badge"
 import { toast } from "sonner"
-import { Building2, Globe, FileText, Loader2, RefreshCw } from "lucide-react"
+import { Building2, Globe, FileText, Loader2, RefreshCw, Shield, Home } from "lucide-react"
+import Link from "next/link"
 
 const createOrgSchema = z.object({
   name: z.string()
@@ -32,6 +35,7 @@ export default function CreateOrganizationPage() {
   const router = useRouter()
   const { data: session, status } = useSession()
   const [isLoading, setIsLoading] = useState(false)
+  const [isPlatformAdmin, setIsPlatformAdmin] = useState<boolean | null>(null)
 
   const {
     register,
@@ -52,12 +56,29 @@ export default function CreateOrganizationPage() {
   const name = watch("name")
   const slug = watch("slug")
 
-  // Check authentication
+  // Check if user is platform admin
   useEffect(() => {
-    if (status === "unauthenticated") {
-      router.push("/auth/login")
+    const checkPlatformAdmin = async () => {
+      if (status === "authenticated" && session?.user?.id) {
+        try {
+          const res = await fetch("/api/auth/check-role")
+          const data = await res.json()
+          setIsPlatformAdmin(data.isPlatformAdmin)
+          
+          if (!data.isPlatformAdmin) {
+            toast.error("Only platform administrators can create organizations")
+          }
+        } catch (error) {
+          console.error("Failed to check role:", error)
+          setIsPlatformAdmin(false)
+        }
+      } else if (status === "unauthenticated") {
+        router.push("/auth/login?callbackUrl=/organization/create")
+      }
     }
-  }, [status, router])
+    
+    checkPlatformAdmin()
+  }, [status, session, router])
 
   const generateSlug = () => {
     const generatedSlug = name
@@ -76,25 +97,33 @@ export default function CreateOrganizationPage() {
       return
     }
 
+    if (!isPlatformAdmin) {
+      toast.error("Only platform administrators can create organizations")
+      return
+    }
+
     setIsLoading(true)
     try {
-      console.log("Submitting organization creation...")
       const res = await fetch("/api/organizations", {
         method: "POST",
         headers: { 
           "Content-Type": "application/json",
         },
-        credentials: "include", // Important: include cookies
+        credentials: "include",
         body: JSON.stringify(data),
       })
 
       const result = await res.json()
-      console.log("Response status:", res.status)
 
       if (!res.ok) {
         if (res.status === 401) {
           toast.error("Please sign in to create an organization")
           router.push("/auth/login")
+          return
+        }
+        if (res.status === 403) {
+          toast.error("You don't have permission to create organizations")
+          router.push("/")
           return
         }
         throw new Error(result.error || result.message || "Failed to create organization")
@@ -110,7 +139,8 @@ export default function CreateOrganizationPage() {
     }
   }
 
-  if (status === "loading") {
+  // Show loading state
+  if (status === "loading" || isPlatformAdmin === null) {
     return (
       <div className="flex h-screen items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -118,8 +148,34 @@ export default function CreateOrganizationPage() {
     )
   }
 
-  if (!session) {
-    return null // Will redirect via useEffect
+  // If not platform admin, show access denied
+  if (isPlatformAdmin === false) {
+    return (
+      <div className="container mx-auto max-w-2xl py-12 px-4">
+        <Card>
+          <CardContent className="text-center py-12">
+            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-red-100">
+              <Shield className="h-8 w-8 text-red-600" />
+            </div>
+            <h1 className="text-2xl font-bold">Access Denied</h1>
+            <p className="mt-2 text-muted-foreground">
+              Only platform administrators can create organizations.
+            </p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              If you need to create an organization, please contact a platform administrator.
+            </p>
+            <div className="mt-6 flex gap-3 justify-center">
+              <Link href="/">
+                <Button variant="outline">
+                  <Home className="mr-2 h-4 w-4" />
+                  Go Home
+                </Button>
+              </Link>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    )
   }
 
   return (
@@ -129,9 +185,15 @@ export default function CreateOrganizationPage() {
           <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-primary/10">
             <Building2 className="h-8 w-8 text-primary" />
           </div>
-          <CardTitle className="text-2xl">Create Your Organization</CardTitle>
+          <div className="flex items-center justify-center gap-2 mb-2">
+            <Badge variant="default" className="bg-primary/10 text-primary hover:bg-primary/20">
+              <Shield className="mr-1 h-3 w-3" />
+              Platform Admin Only
+            </Badge>
+          </div>
+          <CardTitle className="text-2xl">Create Organization</CardTitle>
           <CardDescription>
-            Start managing your community by creating a new organization
+            Create a new organization for your community
           </CardDescription>
         </CardHeader>
         <CardContent>

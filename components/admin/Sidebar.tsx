@@ -15,6 +15,7 @@ import {
   Home,
   BarChart3,
   Shield,
+  HomeIcon,
 } from "lucide-react"
 import { Button } from "@/components/ui/Button"
 import { signOut } from "next-auth/react"
@@ -39,6 +40,12 @@ export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
       label: "Organizations",
       icon: Building2,
       active: pathname === "/admin/organizations" || pathname.startsWith("/admin/organizations/"),
+    },
+    {
+      href: "/admin/houses",
+      label: "Houses",
+      icon: HomeIcon,
+      active: pathname === "/admin/houses" || pathname.startsWith("/admin/houses/"),
     },
     {
       href: "/admin/users",

@@ -68,7 +68,9 @@ export default async function HousesPage({ params, searchParams }: HousesPagePro
       include: {
         _count: {
           select: {
-            members: true,
+            members: {
+              where: { status: "ACTIVE" }  // Only count active house members
+            },
             events: true,
             tickets: true,
           },
@@ -159,7 +161,7 @@ export default async function HousesPage({ params, searchParams }: HousesPagePro
                     <div className="flex justify-between text-sm">
                       <div className="flex items-center gap-1">
                         <Users className="h-4 w-4 text-muted-foreground" />
-                        <span>{house._count.members} members</span>
+                        <span>{house._count.members} active members</span>
                       </div>
                       <div className="flex items-center gap-1">
                         <Calendar className="h-4 w-4 text-muted-foreground" />

@@ -5,6 +5,7 @@ import { WelcomeEmail } from "./templates/welcome"
 import { InvoiceEmail } from "./templates/invoice"
 import { ResetPasswordEmail } from "./templates/reset-password"
 import { TicketPurchaseEmail } from "./templates/ticket-purchase"
+import { AccountSetupEmail } from "./templates/account-setup"
 
 const resend = new Resend(process.env.RESEND_API_KEY)
 const isDev = process.env.NODE_ENV === "development"
@@ -28,26 +29,18 @@ export async function sendInvitationEmail(
   console.log(`Accept Link: ${inviteUrl}`)
   console.log("=".repeat(60) + "\n")
 
-  // Skip sending only if in development AND forceSendEmails is false
   if (isDev && !forceSendEmails) {
     console.log("✅ Email logged (development mode - no email sent)")
-    console.log("💡 To send actual emails in development, add FORCE_SEND_EMAILS=true to .env.local")
     return { success: true, logged: true }
   }
 
-  // Check if API key is configured
   if (!process.env.RESEND_API_KEY) {
     console.log("❌ RESEND_API_KEY not configured. Email not sent.")
-    console.log("💡 Get your API key from https://resend.com")
     return { error: "No API key configured", logged: true }
   }
 
   try {
-    // Render the email template to HTML
-    const html = await render(
-      InvitationEmail({ organizationName, inviteUrl })
-    )
-
+    const html = await render(InvitationEmail({ organizationName, inviteUrl }))
     const { data, error } = await resend.emails.send({
       from: FROM_EMAIL,
       to: email,
@@ -69,6 +62,56 @@ export async function sendInvitationEmail(
   }
 }
 
+export async function sendAccountSetupEmail(
+  email: string,
+  name: string,
+  organizationName: string,
+  inviteToken: string
+) {
+  const setupUrl = `${process.env.NEXT_PUBLIC_APP_URL}/auth/setup-account?token=${inviteToken}&email=${encodeURIComponent(email)}`
+
+  console.log("\n" + "=".repeat(60))
+  console.log("📧 ACCOUNT SETUP EMAIL")
+  console.log("=".repeat(60))
+  console.log(`From: ${FROM_EMAIL}`)
+  console.log(`To: ${email}`)
+  console.log(`Organization: ${organizationName}`)
+  console.log(`Setup Link: ${setupUrl}`)
+  console.log("=".repeat(60) + "\n")
+
+  if (isDev && !forceSendEmails) {
+    console.log("✅ Email logged (development mode - no email sent)")
+    return { success: true, logged: true }
+  }
+
+  if (!process.env.RESEND_API_KEY) {
+    console.log("❌ RESEND_API_KEY not configured. Email not sent.")
+    console.log(`📋 Account setup link for ${email}: ${setupUrl}`)
+    return { error: "No API key configured", logged: true }
+  }
+
+  try {
+    const html = await render(AccountSetupEmail({ name, organizationName, setupUrl }))
+    const { data, error } = await resend.emails.send({
+      from: FROM_EMAIL,
+      to: email,
+      subject: `Complete your ${organizationName} membership setup`,
+      html: html,
+    })
+
+    if (error) {
+      console.error("❌ Resend error:", error)
+      return { error: error.message }
+    }
+
+    console.log(`✅ Account setup email sent to ${email}`)
+    return { success: true, data }
+  } catch (error) {
+    console.error("❌ Failed to send account setup email:", error)
+    return { error: "Failed to send email" }
+  }
+}
+
 export async function sendWelcomeEmail(email: string, name: string) {
   if (isDev && !forceSendEmails) {
     console.log(`📧 WELCOME EMAIL (logged) - From: ${FROM_EMAIL}, To: ${email}, Name: ${name}`)
@@ -82,7 +125,6 @@ export async function sendWelcomeEmail(email: string, name: string) {
 
   try {
     const html = await render(WelcomeEmail({ name }))
-
     const { data, error } = await resend.emails.send({
       from: FROM_EMAIL,
       to: email,
@@ -121,10 +163,7 @@ export async function sendInvoiceEmail(
   }
 
   try {
-    const html = await render(
-      InvoiceEmail({ invoiceNumber, amount, dueDate, invoiceUrl })
-    )
-
+    const html = await render(InvoiceEmail({ invoiceNumber, amount, dueDate, invoiceUrl }))
     const { data, error } = await resend.emails.send({
       from: FROM_EMAIL,
       to: email,
@@ -160,7 +199,6 @@ export async function sendResetPasswordEmail(email: string, resetToken: string) 
 
   try {
     const html = await render(ResetPasswordEmail({ resetUrl }))
-
     const { data, error } = await resend.emails.send({
       from: FROM_EMAIL,
       to: email,
@@ -202,18 +240,15 @@ export async function sendTicketPurchaseEmail(
   }
 
   try {
-    const html = await render(
-      TicketPurchaseEmail({
-        ticketName,
-        quantity,
-        totalAmount,
-        ticketCodes,
-        eventName,
-        eventDate,
-        ticketUrl,
-      })
-    )
-
+    const html = await render(TicketPurchaseEmail({
+      ticketName,
+      quantity,
+      totalAmount,
+      ticketCodes,
+      eventName,
+      eventDate,
+      ticketUrl,
+    }))
     const { data, error } = await resend.emails.send({
       from: FROM_EMAIL,
       to: email,

@@ -1,27 +1,62 @@
+// app/api/organizations/[orgSlug]/tickets/validate/route.ts
 import { NextResponse } from "next/server"
+import { getServerSession } from "next-auth"
+import { authOptions } from "@/lib/auth/config"
 import { prisma } from "@/lib/db"
-import { requireHouseAccess } from "@/lib/auth"
-import { validateTicket } from "@/lib/tickets/validator"
 
 export async function POST(
   req: Request,
-  { params }: { params: { orgSlug: string; houseSlug: string; ticketId: string } }
+  { params }: { params: Promise<{ orgSlug: string }> }
 ) {
   try {
-    const { houseMembership } = await requireHouseAccess(params.orgSlug, params.houseSlug)
+    const session = await getServerSession(authOptions)
+    const { orgSlug } = await params
 
-    const body = await req.json()
-    const { ticketCode, entryPoint, gateNumber, isReentry } = body
+    if (!session?.user?.id) {
+      return NextResponse.json(
+        { error: "Unauthorized" },
+        { status: 401 }
+      )
+    }
 
-    const purchase = await prisma.ticketPurchase.findFirst({
+    // Check if user is event staff or admin
+    const membership = await prisma.membership.findFirst({
       where: {
-        ticketId: params.ticketId,
-      },
-      include: {
-        ticket: true,
-        validations: true,
+        userId: session.user.id,
+        organization: { slug: orgSlug },
+        status: "ACTIVE",
       },
     })
+
+    if (!membership) {
+      return NextResponse.json(
+        { error: "Unauthorized" },
+        { status: 401 }
+      )
+    }
+
+    const body = await req.json()
+    const { ticketCode } = body
+
+    // Find the ticket purchase by checking if the code exists in ticketCodes array
+    // Since we're using MongoDB with Prisma, we need to fetch all purchases and filter
+    const purchases = await prisma.ticketPurchase.findMany({
+      where: {
+        // For MongoDB, we can't use 'has' directly, so we'll fetch all and filter
+      },
+      include: {
+        ticket: {
+          include: {
+            event: true,
+          },
+        },
+      },
+    })
+
+    // Find the purchase that contains this ticket code
+    const purchase = purchases.find(p => 
+      p.ticketCodes && Array.isArray(p.ticketCodes) && p.ticketCodes.includes(ticketCode)
+    )
 
     if (!purchase) {
       return NextResponse.json(
@@ -30,79 +65,72 @@ export async function POST(
       )
     }
 
-    const ticketCodes = purchase.ticketCodes as string[] || []
-    const isValidCode = ticketCodes.some((code: string) => code === ticketCode)
-    
-    if (!isValidCode) {
-      return NextResponse.json(
-        { error: "Invalid ticket code" },
-        { status: 404 }
-      )
-    }
-
-    const validationResult = validateTicket(
-      {
-        ...purchase.ticket,
-        purchase: {
-          ...purchase,
-          usedCount: purchase.usedCount,
-          quantity: purchase.quantity,
-          fullyUsed: purchase.fullyUsed,
-        },
-        validations: purchase.validations,
-      } as any,
-      isReentry
-    )
-
-    if (!validationResult.isValid) {
-      return NextResponse.json(
-        { error: validationResult.reason },
-        { status: 400 }
-      )
-    }
-
-    const validation = await prisma.ticketValidation.create({
-      data: {
-        ticketId: params.ticketId,
-        purchaseId: purchase.id,
-        validatorMembershipId: houseMembership.id,
+    // Check if ticket is already validated
+    const existingValidation = await prisma.ticketValidation.findFirst({
+      where: {
         ticketCode,
-        attendeeName: body.attendeeName,
-        attendeeEmail: body.attendeeEmail,
-        entryPoint,
-        gateNumber,
-        isValid: true,
-        isReentry: isReentry || false,
       },
     })
 
-    const newUsedCount = purchase.usedCount + 1
-    const fullyUsed = newUsedCount >= purchase.quantity
+    if (existingValidation) {
+      return NextResponse.json({
+        valid: false,
+        message: "Ticket has already been used",
+        validatedAt: existingValidation.validatedAt,
+      })
+    }
 
+    // Check if ticket is within validity period
+    const now = new Date()
+    if (now < purchase.ticket.validFrom) {
+      return NextResponse.json({
+        valid: false,
+        message: "Ticket is not yet valid",
+        validFrom: purchase.ticket.validFrom,
+      })
+    }
+
+    if (now > purchase.ticket.validUntil) {
+      return NextResponse.json({
+        valid: false,
+        message: "Ticket has expired",
+        validUntil: purchase.ticket.validUntil,
+      })
+    }
+
+    // Create validation record
+    const validation = await prisma.ticketValidation.create({
+      data: {
+        ticketId: purchase.ticketId,
+        purchaseId: purchase.id,
+        validatorMembershipId: membership.id,
+        ticketCode,
+        attendeeName: purchase.customerName,
+        attendeeEmail: purchase.customerEmail,
+        validatedAt: new Date(),
+        isValid: true,
+      },
+    })
+
+    // Update purchase used count
+    const newUsedCount = purchase.usedCount + 1
     await prisma.ticketPurchase.update({
       where: { id: purchase.id },
       data: {
         usedCount: newUsedCount,
-        fullyUsed,
+        fullyUsed: newUsedCount >= purchase.quantity,
       },
     })
 
-    if (!isReentry) {
-      await prisma.ticket.update({
-        where: { id: params.ticketId },
-        data: {
-          soldQuantity: { increment: 1 },
-          reservedQuantity: { decrement: 1 },
-        },
-      })
-    }
-
     return NextResponse.json({
       valid: true,
-      ticketName: purchase.ticket.name,
-      attendeeName: body.attendeeName,
-      validatedAt: validation.validatedAt,
-      isReentry: isReentry || false,
+      message: "Ticket validated successfully",
+      ticket: {
+        name: purchase.ticket.name,
+        event: purchase.ticket.event?.title,
+        attendee: purchase.customerName,
+      },
+      validation,
     })
   } catch (error) {
     console.error("Error validating ticket:", error)

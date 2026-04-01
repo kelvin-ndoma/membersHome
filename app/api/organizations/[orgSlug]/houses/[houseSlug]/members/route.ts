@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/db"
-import { requireOrgAccess, requireHouseAccess } from "@/lib/auth"
+import { requireHouseAccess } from "@/lib/auth"
 
 export async function GET(
   req: Request,
@@ -15,10 +15,24 @@ export async function GET(
     const search = searchParams.get("search") || ""
     const role = searchParams.get("role")
 
-    const house = await prisma.house.findFirst({
+    const organization = await prisma.organization.findUnique({
+      where: { slug: params.orgSlug },
+      select: { id: true },
+    })
+
+    if (!organization) {
+      return NextResponse.json(
+        { error: "Organization not found" },
+        { status: 404 }
+      )
+    }
+
+    const house = await prisma.house.findUnique({
       where: {
-        slug: params.houseSlug,
-        organization: { slug: params.orgSlug },
+        organizationId_slug: {
+          organizationId: organization.id,
+          slug: params.houseSlug,
+        },
       },
     })
 
@@ -31,6 +45,7 @@ export async function GET(
 
     const where: any = {
       houseId: house.id,
+      status: "ACTIVE",
     }
 
     if (role) {
@@ -89,6 +104,118 @@ export async function GET(
     })
   } catch (error) {
     console.error("Error fetching house members:", error)
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 }
+    )
+  }
+}
+
+export async function POST(
+  req: Request,
+  { params }: { params: { orgSlug: string; houseSlug: string } }
+) {
+  try {
+    // Check if user has access to this house
+    const { houseMembership: currentMember } = await requireHouseAccess(params.orgSlug, params.houseSlug)
+    
+    // Only house admins can add members
+    if (currentMember.role !== "HOUSE_ADMIN") {
+      return NextResponse.json(
+        { error: "Only house admins can add members" },
+        { status: 403 }
+      )
+    }
+
+    const organization = await prisma.organization.findUnique({
+      where: { slug: params.orgSlug },
+      select: { id: true },
+    })
+
+    if (!organization) {
+      return NextResponse.json(
+        { error: "Organization not found" },
+        { status: 404 }
+      )
+    }
+
+    const house = await prisma.house.findUnique({
+      where: {
+        organizationId_slug: {
+          organizationId: organization.id,
+          slug: params.houseSlug,
+        },
+      },
+    })
+
+    if (!house) {
+      return NextResponse.json(
+        { error: "House not found" },
+        { status: 404 }
+      )
+    }
+
+    const body = await req.json()
+    const { membershipId, role } = body
+
+    // Check if membership exists and belongs to this organization
+    const membership = await prisma.membership.findFirst({
+      where: {
+        id: membershipId,
+        organizationId: organization.id,
+        status: "ACTIVE",
+      },
+    })
+
+    if (!membership) {
+      return NextResponse.json(
+        { error: "Member not found in this organization" },
+        { status: 404 }
+      )
+    }
+
+    // Check if already a member of this house
+    const existing = await prisma.houseMembership.findFirst({
+      where: {
+        houseId: house.id,
+        membershipId,
+      },
+    })
+
+    if (existing) {
+      return NextResponse.json(
+        { error: "Member already in this house" },
+        { status: 400 }
+      )
+    }
+
+    // Create house membership
+    const houseMembership = await prisma.houseMembership.create({
+      data: {
+        houseId: house.id,
+        membershipId,
+        role: role || "HOUSE_MEMBER",
+        status: "ACTIVE",
+        joinedAt: new Date(),
+      },
+      include: {
+        membership: {
+          include: {
+            user: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+              },
+            },
+          },
+        },
+      },
+    })
+
+    return NextResponse.json(houseMembership, { status: 201 })
+  } catch (error) {
+    console.error("Error adding member to house:", error)
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }

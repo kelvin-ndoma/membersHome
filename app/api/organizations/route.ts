@@ -1,3 +1,4 @@
+// app/api/organizations/route.ts
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/db"
 import { getServerSession } from "next-auth"
@@ -88,6 +89,22 @@ export async function POST(req: Request) {
     }
 
     console.log("User ID:", session.user.id)
+
+    // Check if user is platform admin
+    const user = await prisma.user.findUnique({
+      where: { id: session.user.id },
+      select: { platformRole: true }
+    })
+
+    console.log("User platform role:", user?.platformRole)
+
+    if (user?.platformRole !== "PLATFORM_ADMIN") {
+      console.log("User is not platform admin, denying access")
+      return NextResponse.json(
+        { error: "Forbidden", message: "Only platform administrators can create organizations" },
+        { status: 403 }
+      )
+    }
 
     const body = await req.json()
     const { name, slug, description, website } = body

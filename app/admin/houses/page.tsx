@@ -33,12 +33,14 @@ export default async function AdminHousesPage({
   const organizationId = params.organizationId
 
   const where: any = {}
+
   if (search) {
     where.OR = [
       { name: { contains: search, mode: "insensitive" } },
       { slug: { contains: search, mode: "insensitive" } },
     ]
   }
+
   if (organizationId) {
     where.organizationId = organizationId
   }
@@ -168,8 +170,8 @@ export default async function AdminHousesPage({
                     {new Date(house.createdAt).toLocaleDateString()}
                   </td>
                   <td className="p-3">
-                    <Link href={`/admin/houses/${house.id}`}>
-                      <Button variant="ghost" size="sm">View</Button>
+                    <Link href={`/admin/organizations/${house.organization.id}`}>
+                      <Button variant="ghost" size="sm">View Org</Button>
                     </Link>
                   </td>
                 </tr>
@@ -178,6 +180,12 @@ export default async function AdminHousesPage({
           </table>
         </div>
       </div>
+
+      {houses.length === 0 && (
+        <div className="text-center py-12">
+          <p className="text-muted-foreground">No houses found</p>
+        </div>
+      )}
 
       {totalPages > 1 && (
         <div className="flex justify-center gap-2">

@@ -1,8 +1,9 @@
+// components/organization/Header.tsx
 "use client"
 
 import { useSession } from "next-auth/react"
 import Link from "next/link"
-import { usePathname } from "next/navigation"
+import { useRouter, usePathname } from "next/navigation"
 import {
   Bell,
   Settings,
@@ -11,6 +12,7 @@ import {
   Home,
   Building2,
   Menu,
+  ArrowLeft,
 } from "lucide-react"
 import { Button } from "@/components/ui/Button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/Avatar"
@@ -24,11 +26,19 @@ import {
 } from "@/components/ui/Dropdown"
 import { SignOutButton } from "@/components/auth/SignOutButton"
 
+interface House {
+  id: string
+  name: string
+  slug: string
+}
+
 interface OrganizationHeaderProps {
   organizationName: string
   organizationSlug: string
   organizationLogo?: string | null
   onMenuClick?: () => void
+  selectedHouse?: House | null
+  onBackToOrg?: () => void
 }
 
 export function OrganizationHeader({
@@ -36,24 +46,12 @@ export function OrganizationHeader({
   organizationSlug,
   organizationLogo,
   onMenuClick,
+  selectedHouse,
+  onBackToOrg,
 }: OrganizationHeaderProps) {
   const { data: session } = useSession()
+  const router = useRouter()
   const pathname = usePathname()
-
-  const getPageTitle = () => {
-    if (pathname === `/organization/${organizationSlug}/dashboard`) return "Dashboard"
-    if (pathname === `/organization/${organizationSlug}/people`) return "Members"
-    if (pathname === `/organization/${organizationSlug}/houses`) return "Houses"
-    if (pathname === `/organization/${organizationSlug}/events`) return "Events"
-    if (pathname === `/organization/${organizationSlug}/commerce`) return "Commerce"
-    if (pathname === `/organization/${organizationSlug}/memberships`) return "Memberships"
-    if (pathname === `/organization/${organizationSlug}/communications`) return "Communications"
-    if (pathname === `/organization/${organizationSlug}/reports`) return "Reports"
-    if (pathname === `/organization/${organizationSlug}/billing`) return "Billing"
-    if (pathname === `/organization/${organizationSlug}/settings`) return "Settings"
-    if (pathname === `/organization/${organizationSlug}/profile`) return "Profile"
-    return "Organization"
-  }
 
   const userInitials = session?.user?.name
     ? session.user.name
@@ -76,28 +74,52 @@ export function OrganizationHeader({
             <Menu className="h-5 w-5" />
           </Button>
 
-          <div className="flex items-center gap-2">
-            {organizationLogo ? (
-              <img
-                src={organizationLogo}
-                alt={organizationName}
-                className="h-8 w-8 rounded-full object-cover"
-              />
-            ) : (
-              <Building2 className="h-5 w-5 text-primary" />
-            )}
-
-            <div className="hidden flex-col md:flex">
-              <span className="text-sm font-medium">{organizationName}</span>
-              <span className="text-xs text-muted-foreground">
-                {getPageTitle()}
+          {selectedHouse ? (
+            // House view - show back button and house name
+            <div className="flex items-center gap-2">
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={onBackToOrg}
+                title="Back to Organization"
+                className="hidden md:flex"
+              >
+                <ArrowLeft className="h-4 w-4" />
+              </Button>
+              <Link href={`/organization/${organizationSlug}/dashboard`} className="flex items-center gap-2">
+                {organizationLogo ? (
+                  <img
+                    src={organizationLogo}
+                    alt={organizationName}
+                    className="h-8 w-8 rounded-full object-cover"
+                  />
+                ) : (
+                  <Building2 className="h-5 w-5 text-primary" />
+                )}
+                <span className="text-sm font-medium hidden md:inline-block">
+                  {organizationName}
+                </span>
+              </Link>
+              <span className="text-muted-foreground hidden md:block">/</span>
+              <span className="text-sm font-medium">{selectedHouse.name}</span>
+            </div>
+          ) : (
+            // Org view - just show organization name
+            <Link href={`/organization/${organizationSlug}/dashboard`} className="flex items-center gap-2">
+              {organizationLogo ? (
+                <img
+                  src={organizationLogo}
+                  alt={organizationName}
+                  className="h-8 w-8 rounded-full object-cover"
+                />
+              ) : (
+                <Building2 className="h-5 w-5 text-primary" />
+              )}
+              <span className="text-sm font-medium hidden md:inline-block">
+                {organizationName}
               </span>
-            </div>
-
-            <div className="flex flex-col md:hidden">
-              <span className="text-sm font-medium">{getPageTitle()}</span>
-            </div>
-          </div>
+            </Link>
+          )}
         </div>
 
         <div className="flex items-center gap-2 md:gap-4">

@@ -1,16 +1,27 @@
+// app/api/organizations/[orgSlug]/tickets/[ticketId]/route.ts
 import { NextResponse } from "next/server"
+import { getServerSession } from "next-auth"
+import { authOptions } from "@/lib/auth/config"
 import { prisma } from "@/lib/db"
-import { requireOrgAccess } from "@/lib/auth"
 
+// GET - Fetch a single ticket
 export async function GET(
   req: Request,
-  { params }: { params: { orgSlug: string; ticketId: string } }
+  { params }: { params: Promise<{ orgSlug: string; ticketId: string }> }
 ) {
   try {
-    await requireOrgAccess(params.orgSlug)
+    const session = await getServerSession(authOptions)
+    const { orgSlug, ticketId } = await params
+
+    if (!session?.user?.id) {
+      return NextResponse.json(
+        { error: "Unauthorized" },
+        { status: 401 }
+      )
+    }
 
     const organization = await prisma.organization.findUnique({
-      where: { slug: params.orgSlug },
+      where: { slug: orgSlug },
       select: { id: true },
     })
 
@@ -23,45 +34,18 @@ export async function GET(
 
     const ticket = await prisma.ticket.findFirst({
       where: {
-        id: params.ticketId,
+        id: ticketId,
         organizationId: organization.id,
       },
       include: {
         house: {
-          select: {
-            id: true,
-            name: true,
-            slug: true,
-          },
+          select: { id: true, name: true, slug: true },
         },
         event: {
-          select: {
-            id: true,
-            title: true,
-            startDate: true,
-          },
-        },
-        purchases: {
-          take: 10,
-          orderBy: { createdAt: "desc" },
-          include: {
-            membership: {
-              include: {
-                user: {
-                  select: {
-                    name: true,
-                    email: true,
-                  },
-                },
-              },
-            },
-          },
+          select: { id: true, title: true, startDate: true, endDate: true },
         },
         _count: {
-          select: {
-            purchases: true,
-            validations: true,
-          },
+          select: { purchases: true, validations: true },
         },
       },
     })
@@ -83,33 +67,39 @@ export async function GET(
   }
 }
 
+// PATCH - Update a ticket
 export async function PATCH(
   req: Request,
-  { params }: { params: { orgSlug: string; ticketId: string } }
+  { params }: { params: Promise<{ orgSlug: string; ticketId: string }> }
 ) {
   try {
-    const { membership } = await requireOrgAccess(params.orgSlug)
+    const session = await getServerSession(authOptions)
+    const { orgSlug, ticketId } = await params
 
-    const body = await req.json()
-    const {
-      name,
-      description,
-      price,
-      totalQuantity,
-      maxPerPurchase,
-      memberOnly,
-      salesStartAt,
-      salesEndAt,
-      validFrom,
-      validUntil,
-      status,
-      isPublic,
-      earlyBirdPrice,
-      memberPrice,
-    } = body
+    if (!session?.user?.id) {
+      return NextResponse.json(
+        { error: "Unauthorized" },
+        { status: 401 }
+      )
+    }
+
+    const membership = await prisma.membership.findFirst({
+      where: {
+        userId: session.user.id,
+        organization: { slug: orgSlug },
+        organizationRole: { in: ["ORG_ADMIN", "ORG_OWNER"] },
+      },
+    })
+
+    if (!membership) {
+      return NextResponse.json(
+        { error: "Forbidden" },
+        { status: 403 }
+      )
+    }
 
     const organization = await prisma.organization.findUnique({
-      where: { slug: params.orgSlug },
+      where: { slug: orgSlug },
       select: { id: true },
     })
 
@@ -120,30 +110,61 @@ export async function PATCH(
       )
     }
 
-    const ticket = await prisma.ticket.update({
+    const existingTicket = await prisma.ticket.findFirst({
       where: {
-        id: params.ticketId,
+        id: ticketId,
         organizationId: organization.id,
-      },
-      data: {
-        name,
-        description,
-        price,
-        totalQuantity,
-        maxPerPurchase,
-        memberOnly,
-        salesStartAt: salesStartAt ? new Date(salesStartAt) : undefined,
-        salesEndAt: salesEndAt ? new Date(salesEndAt) : undefined,
-        validFrom: validFrom ? new Date(validFrom) : undefined,
-        validUntil: validUntil ? new Date(validUntil) : undefined,
-        status,
-        isPublic,
-        earlyBirdPrice,
-        memberPrice,
       },
     })
 
-    return NextResponse.json(ticket)
+    if (!existingTicket) {
+      return NextResponse.json(
+        { error: "Ticket not found" },
+        { status: 404 }
+      )
+    }
+
+    const body = await req.json()
+    const {
+      name,
+      description,
+      type,
+      price,
+      currency,
+      totalQuantity,
+      maxPerPurchase,
+      memberOnly,
+      requiresApproval,
+      salesStartAt,
+      salesEndAt,
+      validFrom,
+      validUntil,
+      eventId,
+      status,
+    } = body
+
+    const updatedTicket = await prisma.ticket.update({
+      where: { id: ticketId },
+      data: {
+        name: name !== undefined ? name : existingTicket.name,
+        description: description !== undefined ? description : existingTicket.description,
+        type: type !== undefined ? type : existingTicket.type,
+        price: price !== undefined ? price : existingTicket.price,
+        currency: currency !== undefined ? currency : existingTicket.currency,
+        totalQuantity: totalQuantity !== undefined ? totalQuantity : existingTicket.totalQuantity,
+        maxPerPurchase: maxPerPurchase !== undefined ? maxPerPurchase : existingTicket.maxPerPurchase,
+        memberOnly: memberOnly !== undefined ? memberOnly : existingTicket.memberOnly,
+        requiresApproval: requiresApproval !== undefined ? requiresApproval : existingTicket.requiresApproval,
+        salesStartAt: salesStartAt !== undefined ? new Date(salesStartAt) : existingTicket.salesStartAt,
+        salesEndAt: salesEndAt !== undefined ? new Date(salesEndAt) : existingTicket.salesEndAt,
+        validFrom: validFrom !== undefined ? new Date(validFrom) : existingTicket.validFrom,
+        validUntil: validUntil !== undefined ? new Date(validUntil) : existingTicket.validUntil,
+        eventId: eventId !== undefined ? eventId : existingTicket.eventId,
+        status: status !== undefined ? status : existingTicket.status,
+      },
+    })
+
+    return NextResponse.json(updatedTicket)
   } catch (error) {
     console.error("Error updating ticket:", error)
     return NextResponse.json(
@@ -153,15 +174,39 @@ export async function PATCH(
   }
 }
 
+// DELETE - Delete a ticket
 export async function DELETE(
   req: Request,
-  { params }: { params: { orgSlug: string; ticketId: string } }
+  { params }: { params: Promise<{ orgSlug: string; ticketId: string }> }
 ) {
   try {
-    const { membership } = await requireOrgAccess(params.orgSlug)
+    const session = await getServerSession(authOptions)
+    const { orgSlug, ticketId } = await params
+
+    if (!session?.user?.id) {
+      return NextResponse.json(
+        { error: "Unauthorized" },
+        { status: 401 }
+      )
+    }
+
+    const membership = await prisma.membership.findFirst({
+      where: {
+        userId: session.user.id,
+        organization: { slug: orgSlug },
+        organizationRole: { in: ["ORG_ADMIN", "ORG_OWNER"] },
+      },
+    })
+
+    if (!membership) {
+      return NextResponse.json(
+        { error: "Forbidden" },
+        { status: 403 }
+      )
+    }
 
     const organization = await prisma.organization.findUnique({
-      where: { slug: params.orgSlug },
+      where: { slug: orgSlug },
       select: { id: true },
     })
 
@@ -172,20 +217,39 @@ export async function DELETE(
       )
     }
 
-    await prisma.ticket.update({
+    const ticket = await prisma.ticket.findFirst({
       where: {
-        id: params.ticketId,
+        id: ticketId,
         organizationId: organization.id,
       },
-      data: { status: "CANCELLED" },
+      include: {
+        _count: {
+          select: { purchases: true },
+        },
+      },
     })
 
-    return NextResponse.json(
-      { message: "Ticket cancelled successfully" },
-      { status: 200 }
-    )
+    if (!ticket) {
+      return NextResponse.json(
+        { error: "Ticket not found" },
+        { status: 404 }
+      )
+    }
+
+    if (ticket._count.purchases > 0) {
+      return NextResponse.json(
+        { error: "Cannot delete ticket with existing purchases" },
+        { status: 400 }
+      )
+    }
+
+    await prisma.ticket.delete({
+      where: { id: ticketId },
+    })
+
+    return NextResponse.json({ success: true })
   } catch (error) {
-    console.error("Error cancelling ticket:", error)
+    console.error("Error deleting ticket:", error)
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }

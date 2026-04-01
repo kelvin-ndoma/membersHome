@@ -1,3 +1,4 @@
+// components/ui/QRCode.tsx
 "use client"
 
 import { useEffect, useRef } from "react"
@@ -9,18 +10,20 @@ interface QRCodeProps {
   className?: string
 }
 
-export function QRCodeComponent({ value, size = 200, className }: QRCodeProps) {
+export function QRCodeComponent({ value, size = 48, className }: QRCodeProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
 
   useEffect(() => {
     if (canvasRef.current && value) {
       QRCode.toCanvas(canvasRef.current, value, {
         width: size,
-        margin: 2,
+        margin: 1,
         color: {
           dark: "#000000",
           light: "#ffffff",
         },
+      }, (error) => {
+        if (error) console.error("Error generating QR code:", error)
       })
     }
   }, [value, size])

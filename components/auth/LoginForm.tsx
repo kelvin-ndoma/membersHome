@@ -29,20 +29,32 @@ export function LoginForm() {
       if (result?.error) {
         toast.error("Invalid email or password")
       } else {
-        // Check user role and redirect accordingly
-        const session = await fetch("/api/auth/session").then(res => res.json())
+        // Fetch session to check roles
+        const sessionRes = await fetch("/api/auth/session")
+        const session = await sessionRes.json()
         
         if (session?.user?.platformRole === "PLATFORM_ADMIN") {
           router.push("/admin")
-        } else {
-          // Check if user has any organizations
-          const memberships = await fetch("/api/organizations").then(res => res.json())
+          router.refresh()
+          return
+        }
+        
+        // Fetch user's memberships to determine redirect
+        const membershipsRes = await fetch("/api/organizations")
+        const membershipsData = await membershipsRes.json()
+        
+        if (membershipsData.organizations?.length > 0) {
+          const firstOrg = membershipsData.organizations[0]
           
-          if (memberships.organizations?.length > 0) {
-            router.push(`/organization/${memberships.organizations[0].slug}/dashboard`)
+          // Check if user is admin of this organization
+          if (firstOrg.role === "ORG_ADMIN" || firstOrg.role === "ORG_OWNER") {
+            router.push(`/organization/${firstOrg.slug}/dashboard`)
           } else {
-            router.push("/organization/create")
+            // Regular member goes to portal
+            router.push(`/portal/${firstOrg.slug}/dashboard`)
           }
+        } else {
+          router.push("/organization/create")
         }
         router.refresh()
       }

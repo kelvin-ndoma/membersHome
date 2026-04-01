@@ -2,7 +2,7 @@
 
 import { useSession } from "next-auth/react"
 import Link from "next/link"
-import { Bell, Settings, User, LogOut, ChevronDown, Home } from "lucide-react"
+import { Bell, Settings, User, LogOut, ChevronDown, Home, HomeIcon } from "lucide-react"
 import { Button } from "@/components/ui/Button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/Avatar"
 import {
@@ -18,12 +18,14 @@ import { SignOutButton } from "@/components/auth/SignOutButton"
 interface DashboardHeaderProps {
   organizationName?: string
   organizationSlug?: string
+  houseName?: string  // Add this
   showBackToSite?: boolean
 }
 
 export function DashboardHeader({ 
   organizationName, 
   organizationSlug,
+  houseName,
   showBackToSite = true 
 }: DashboardHeaderProps) {
   const { data: session } = useSession()
@@ -48,7 +50,21 @@ export function DashboardHeader({
                 <span className="text-sm font-medium">{organizationName}</span>
               </>
             )}
+            {houseName && (
+              <>
+                <span className="text-muted-foreground">/</span>
+                <span className="text-sm text-muted-foreground">{houseName}</span>
+              </>
+            )}
           </Link>
+
+          {/* House badge */}
+          {houseName && (
+            <div className="hidden items-center gap-1.5 rounded-full bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary md:flex">
+              <HomeIcon className="h-3.5 w-3.5" />
+              <span>{houseName}</span>
+            </div>
+          )}
         </div>
 
         <div className="flex items-center gap-2 md:gap-4">

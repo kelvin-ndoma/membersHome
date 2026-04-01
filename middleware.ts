@@ -7,10 +7,27 @@ export default withAuth(
     const token = (req as any).nextauth?.token
     const path = req.nextUrl.pathname
 
+    // Platform Admin routes
     if (path.startsWith("/admin")) {
       if (token?.platformRole !== "PLATFORM_ADMIN") {
         return NextResponse.redirect(new URL("/", req.url))
       }
+    }
+
+    // Organization Admin routes (for org owners/admins only)
+    if (path.startsWith("/organization")) {
+      if (!token) {
+        return NextResponse.redirect(new URL("/auth/login", req.url))
+      }
+      // Role check will be done in the layout
+    }
+
+    // Member Portal routes
+    if (path.startsWith("/portal")) {
+      if (!token) {
+        return NextResponse.redirect(new URL("/auth/login", req.url))
+      }
+      // Membership check will be done in the layout
     }
 
     return NextResponse.next()
@@ -34,6 +51,7 @@ export default withAuth(
           "/tickets",
           "/invite",
           "/house/invite",
+          "/membership/apply",
         ]
 
         if (path.startsWith("/api/")) return true
@@ -51,5 +69,10 @@ export default withAuth(
 )
 
 export const config = {
-  matcher: ["/admin/:path*", "/organization/:path*", "/house/:path*"],
+  matcher: [
+    "/admin/:path*",
+    "/organization/:path*",
+    "/house/:path*",
+    "/portal/:path*",
+  ],
 }

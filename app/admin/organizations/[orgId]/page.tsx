@@ -6,9 +6,11 @@ import { authOptions } from "@/lib/auth/config"
 import { prisma } from "@/lib/db"
 import { Button } from "@/components/ui/Button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card"
-import { Building2, Users, Home, Calendar, Ticket, DollarSign, Edit, Trash2, AlertCircle } from "lucide-react"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/Tabs"
+import { Building2, Users, Home, Calendar, Ticket, DollarSign, Edit, Trash2, AlertCircle, Plus } from "lucide-react"
 import { format } from "date-fns"
 import DeleteOrganizationButton from "@/components/admin/DeleteOrganizationButton"
+import { HousesList } from "@/components/admin/HousesList"
 
 interface OrgPageProps {
   params: Promise<{ orgId: string }>
@@ -43,6 +45,19 @@ export default async function OrganizationDetailPage({ params }: OrgPageProps) {
               id: true,
               name: true,
               email: true,
+            },
+          },
+        },
+      },
+      houses: {
+        take: 10,
+        orderBy: { createdAt: "desc" },
+        include: {
+          _count: {
+            select: {
+              members: true,
+              events: true,
+              tickets: true,
             },
           },
         },
@@ -106,62 +121,93 @@ export default async function OrganizationDetailPage({ params }: OrgPageProps) {
         ))}
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Organization Details</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-2">
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <p className="text-sm text-muted-foreground">Plan</p>
-              <p className="font-medium">{organization.plan}</p>
-            </div>
-            <div>
-              <p className="text-sm text-muted-foreground">Status</p>
-              <p className="font-medium">{organization.status === "CANCELLED" ? "Deleted" : organization.status}</p>
-            </div>
-            <div>
-              <p className="text-sm text-muted-foreground">Created</p>
-              <p className="font-medium">{format(new Date(organization.createdAt), "MMM d, yyyy")}</p>
-            </div>
-            {organization.website && (
-              <div>
-                <p className="text-sm text-muted-foreground">Website</p>
-                <a href={organization.website} target="_blank" rel="noopener noreferrer" className="font-medium text-primary hover:underline">
-                  {organization.website}
-                </a>
-              </div>
-            )}
-            {organization.billingEmail && (
-              <div>
-                <p className="text-sm text-muted-foreground">Billing Email</p>
-                <p className="font-medium">{organization.billingEmail}</p>
-              </div>
-            )}
-          </div>
-        </CardContent>
-      </Card>
+      <Tabs defaultValue="details" className="space-y-4">
+        <TabsList>
+          <TabsTrigger value="details">Organization Details</TabsTrigger>
+          <TabsTrigger value="houses">
+            Houses ({organization._count.houses})
+          </TabsTrigger>
+          <TabsTrigger value="members">Recent Members</TabsTrigger>
+        </TabsList>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Recent Members</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            {organization.memberships.map((member) => (
-              <div key={member.id} className="flex items-center justify-between border-b pb-3 last:border-0">
+        <TabsContent value="details">
+          <Card>
+            <CardHeader>
+              <CardTitle>Organization Details</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <p className="font-medium">{member.user.name}</p>
-                  <p className="text-sm text-muted-foreground">{member.user.email}</p>
+                  <p className="text-sm text-muted-foreground">Plan</p>
+                  <p className="font-medium">{organization.plan}</p>
                 </div>
-                <div className="text-sm text-muted-foreground">
-                  {member.organizationRole} • Joined {format(new Date(member.joinedAt), "MMM d, yyyy")}
+                <div>
+                  <p className="text-sm text-muted-foreground">Status</p>
+                  <p className="font-medium">{organization.status === "CANCELLED" ? "Deleted" : organization.status}</p>
                 </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">Created</p>
+                  <p className="font-medium">{format(new Date(organization.createdAt), "MMM d, yyyy")}</p>
+                </div>
+                {organization.website && (
+                  <div>
+                    <p className="text-sm text-muted-foreground">Website</p>
+                    <a href={organization.website} target="_blank" rel="noopener noreferrer" className="font-medium text-primary hover:underline">
+                      {organization.website}
+                    </a>
+                  </div>
+                )}
+                {organization.billingEmail && (
+                  <div>
+                    <p className="text-sm text-muted-foreground">Billing Email</p>
+                    <p className="font-medium">{organization.billingEmail}</p>
+                  </div>
+                )}
               </div>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="houses">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between">
+              <CardTitle>Houses in {organization.name}</CardTitle>
+              <Link href={`/admin/organizations/${orgId}/houses/create`}>
+                <Button size="sm">
+                  <Plus className="mr-2 h-4 w-4" />
+                  Create House
+                </Button>
+              </Link>
+            </CardHeader>
+            <CardContent>
+              <HousesList houses={organization.houses} orgId={orgId} />
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="members">
+          <Card>
+            <CardHeader>
+              <CardTitle>Recent Members</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                {organization.memberships.map((member) => (
+                  <div key={member.id} className="flex items-center justify-between border-b pb-3 last:border-0">
+                    <div>
+                      <p className="font-medium">{member.user.name}</p>
+                      <p className="text-sm text-muted-foreground">{member.user.email}</p>
+                    </div>
+                    <div className="text-sm text-muted-foreground">
+                      {member.organizationRole} • Joined {format(new Date(member.joinedAt), "MMM d, yyyy")}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
     </div>
   )
 }

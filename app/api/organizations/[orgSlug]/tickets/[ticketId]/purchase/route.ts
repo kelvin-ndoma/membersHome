@@ -1,63 +1,78 @@
+// app/api/organizations/[orgSlug]/tickets/[ticketId]/purchase/route.ts
 import { NextResponse } from "next/server"
+import { getServerSession } from "next-auth"
+import { authOptions } from "@/lib/auth/config"
 import { prisma } from "@/lib/db"
-import { requireAuth } from "@/lib/auth"
-import { generateTicketCode } from "@/lib/utils/tokens"
-import { sendTicketPurchaseEmail } from "@/lib/email"
+import { randomUUID } from "crypto"
 
 export async function POST(
   req: Request,
-  { params }: { params: { orgSlug: string; ticketId: string } }
+  { params }: { params: Promise<{ orgSlug: string; ticketId: string }> }
 ) {
   try {
-    const session = await requireAuth()
+    const session = await getServerSession(authOptions)
+    const { orgSlug, ticketId } = await params
+
+    if (!session?.user?.id) {
+      return NextResponse.json(
+        { error: "Unauthorized" },
+        { status: 401 }
+      )
+    }
 
     const body = await req.json()
     const { quantity, customerName, customerEmail, customerPhone, membershipId } = body
 
-    const organization = await prisma.organization.findUnique({
-      where: { slug: params.orgSlug },
-      select: { id: true },
+    // Get the member's membership
+    const membership = await prisma.membership.findFirst({
+      where: {
+        id: membershipId,
+        userId: session.user.id,
+        organization: { slug: orgSlug },
+        status: "ACTIVE",
+      },
     })
 
-    if (!organization) {
+    if (!membership) {
       return NextResponse.json(
-        { error: "Organization not found" },
+        { error: "Membership not found" },
         { status: 404 }
       )
     }
 
+    // Get the ticket
     const ticket = await prisma.ticket.findFirst({
       where: {
-        id: params.ticketId,
-        organizationId: organization.id,
+        id: ticketId,
+        organization: { slug: orgSlug },
         status: "ACTIVE",
       },
     })
 
     if (!ticket) {
       return NextResponse.json(
-        { error: "Ticket not found or not available" },
+        { error: "Ticket not found" },
         { status: 404 }
       )
     }
 
-    const isMember = !!membershipId
-    const now = new Date()
-
-    if (ticket.memberOnly && !isMember) {
+    // Check if ticket is still available
+    const availableQuantity = ticket.totalQuantity - ticket.soldQuantity - ticket.reservedQuantity
+    if (availableQuantity < quantity) {
       return NextResponse.json(
-        { error: "This ticket is only available to members" },
+        { error: "Not enough tickets available" },
         { status: 400 }
       )
     }
 
+    // Check if sales period is valid
+    const now = new Date()
     if (now < ticket.salesStartAt) {
       return NextResponse.json(
-        { error: "Ticket sales have not started yet" },
+        { error: "Ticket sales haven't started yet" },
         { status: 400 }
       )
     }
-
     if (now > ticket.salesEndAt) {
       return NextResponse.json(
         { error: "Ticket sales have ended" },
@@ -65,75 +80,52 @@ export async function POST(
       )
     }
 
-    const availableQuantity = ticket.totalQuantity - ticket.soldQuantity - ticket.reservedQuantity
-    if (availableQuantity < quantity) {
-      return NextResponse.json(
-        { error: `Only ${availableQuantity} tickets available` },
-        { status: 400 }
-      )
-    }
-
-    let unitPrice = ticket.price
-    const isEarlyBird = now < new Date(ticket.salesStartAt.getTime() + 7 * 24 * 60 * 60 * 1000)
-
-    if (isMember && ticket.memberPrice !== null && ticket.memberPrice !== undefined) {
-      unitPrice = ticket.memberPrice
-    } else if (isEarlyBird && ticket.earlyBirdPrice !== null && ticket.earlyBirdPrice !== undefined) {
-      unitPrice = ticket.earlyBirdPrice
-    }
-
-    const totalAmount = unitPrice * quantity
-    const ticketCodes = Array(quantity).fill(null).map(() => generateTicketCode())
-
-    const purchase = await prisma.$transaction(async (tx) => {
-      const purchaseRecord = await tx.ticketPurchase.create({
-        data: {
-          ticketId: ticket.id,
-          organizationId: organization.id,
-          houseId: ticket.houseId,
-          membershipId,
-          userId: session.user.id,
-          quantity,
-          unitPrice,
-          totalAmount,
-          currency: ticket.currency,
-          customerName,
-          customerEmail: customerEmail || session.user.email,
-          customerPhone,
-          paymentStatus: "PENDING",
-          ticketCodes,
-          usedCount: 0,
-          fullyUsed: false,
-        },
-      })
-
-      await tx.ticket.update({
-        where: { id: ticket.id },
-        data: {
-          reservedQuantity: { increment: quantity },
-        },
-      })
-
-      return purchaseRecord
+    // Generate unique ticket codes for each ticket
+    const ticketCodes = Array.from({ length: quantity }, () => {
+      // Generate a unique code: prefix + random UUID + timestamp
+      const code = `${ticket.id.slice(0, 4)}-${randomUUID().slice(0, 8)}-${Date.now().toString().slice(-6)}`
+      return code.toUpperCase()
     })
 
-    await sendTicketPurchaseEmail(
-      customerEmail || session.user.email,
-      ticket.name,
-      quantity,
-      totalAmount,
-      ticketCodes,
-      undefined,
-      undefined,
-      `${process.env.NEXT_PUBLIC_APP_URL}/tickets/${purchase.id}`
-    )
+    // Calculate total amount
+    const totalAmount = ticket.price * quantity
+
+    // Create ticket purchase
+    const purchase = await prisma.ticketPurchase.create({
+      data: {
+        ticketId,
+        organizationId: membership.organizationId,
+        houseId: ticket.houseId,
+        membershipId,
+        userId: session.user.id,
+        quantity,
+        unitPrice: ticket.price,
+        totalAmount,
+        currency: ticket.currency,
+        customerName: customerName || session.user.name,
+        customerEmail: customerEmail || session.user.email,
+        customerPhone: customerPhone,
+        paymentStatus: ticket.price === 0 ? "SUCCEEDED" : "PENDING",
+        ticketCodes,
+        usedCount: 0,
+        fullyUsed: false,
+      },
+    })
+
+    // Update ticket sold quantity
+    await prisma.ticket.update({
+      where: { id: ticketId },
+      data: {
+        soldQuantity: { increment: quantity },
+        status: ticket.soldQuantity + quantity >= ticket.totalQuantity ? "SOLD_OUT" : "ACTIVE",
+      },
+    })
 
     return NextResponse.json({
-      purchaseId: purchase.id,
+      purchase,
       ticketCodes,
       totalAmount,
-      unitPrice,
-    })
+    }, { status: 201 })
   } catch (error) {
     console.error("Error purchasing ticket:", error)
     return NextResponse.json(
