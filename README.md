@@ -1007,3 +1007,19 @@ membershome
 ├── tailwind.config.js
 ├── tsconfig.json
 └── vercel.json
+
+1. Applicant submits application (PENDING)
+   ↓
+2. Admin moves to REVIEWING → Send email with link
+   ↓
+3. Applicant clicks link → Sees plans + CREDIT CARD FORM
+   ↓
+4. Applicant selects plan AND enters credit card info
+   ↓
+5. System validates card (Stripe) and saves payment method
+   ↓
+6. Admin reviews and can approve/reject
+   ↓
+7. Upon approval, first payment is charged
+   ↓
+8. Member becomes active

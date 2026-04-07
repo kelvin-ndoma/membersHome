@@ -78,25 +78,37 @@ export default function CreateMembershipPlanPage() {
   })
 
   useEffect(() => {
-    fetch(`/api/organizations/${orgSlug}/houses/${houseSlug}`)
-      .then(res => res.json())
-      .then(data => {
-        setHouse(data.house)
-        setLoadingHouse(false)
-      })
-      .catch(error => {
+    async function fetchHouse() {
+      try {
+        const res = await fetch(`/api/organizations/${orgSlug}/houses/${houseSlug}`)
+        if (!res.ok) {
+          throw new Error("House not found")
+        }
+        const data = await res.json()
+        // The API returns the house object directly, not wrapped in a 'house' property
+        setHouse(data)
+      } catch (error) {
         console.error("Failed to load house:", error)
+        toast.error("Failed to load house data")
+      } finally {
         setLoadingHouse(false)
-      })
+      }
+    }
+    fetchHouse()
   }, [orgSlug, houseSlug])
 
   const onSubmit = async (data: PlanFormData) => {
+    if (!house?.id) {
+      toast.error("House information not loaded")
+      return
+    }
+
     setIsLoading(true)
     try {
       const formattedData = {
         ...data,
         features: data.features.map(f => f.value).filter(v => v.trim()),
-        houseId: house?.id,
+        houseId: house.id,
       }
 
       const res = await fetch(`/api/organizations/${orgSlug}/membership-plans`, {
@@ -149,7 +161,7 @@ export default function CreateMembershipPlanPage() {
           <div>
             <h1 className="text-2xl font-bold tracking-tight">Create Membership Plan</h1>
             <p className="text-muted-foreground">
-              House not found
+              House not found. Please go back and try again.
             </p>
           </div>
         </div>

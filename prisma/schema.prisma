@@ -24,9 +24,9 @@ model User {
   platformRole PlatformRole @default(USER)
 
   // Remove @unique from invitationToken
-  invitationToken       String?
-  invitationSentAt      DateTime?
-  invitationAcceptedAt  DateTime?
+  invitationToken      String?
+  invitationSentAt     DateTime?
+  invitationAcceptedAt DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -41,12 +41,14 @@ model User {
   createdCommunications Communication[]  @relation("CommunicationCreator")
   createdInvoices       Invoice[]        @relation("InvoiceCreator")
   paidInvoices          Invoice[]        @relation("InvoicePayer")
-  
+
   // New relations for membership system
-  reviewedApplications MembershipApplication[] @relation("ApplicationReviewer")
-  membershipItems      MembershipItem[]
-  cancelledMemberships MembershipItem[] @relation("MembershipCanceller")
+  reviewedApplications    MembershipApplication[] @relation("ApplicationReviewer")
+  membershipItems         MembershipItem[]
+  cancelledMemberships    MembershipItem[]        @relation("MembershipCanceller")
+  reviewedFormSubmissions FormSubmission[]        @relation("FormSubmissionReviewer") // Add this line
 }
+
 enum PlatformRole {
   USER
   PLATFORM_ADMIN
@@ -102,11 +104,12 @@ model Organization {
   auditLogs       AuditLog[]
   rsvps           RSVP[]
   ticketPurchases TicketPurchase[]
-  
+
   // New relations for membership system
   membershipPlans        MembershipPlan[]
   membershipApplications MembershipApplication[]
   membershipItems        MembershipItem[]
+  customForms            CustomForm[] // Add this line
 
   @@index([status])
   @@index([customDomain])
@@ -207,9 +210,10 @@ model House {
   createdAt       DateTime         @default(now())
   updatedAt       DateTime         @updatedAt
   ticketPurchases TicketPurchase[]
-  
+
   // New relation for membership system
   membershipPlans MembershipPlan[]
+  customForms     CustomForm[] // Add this line
 
   @@unique([organizationId, slug])
   @@index([organizationId])
@@ -257,7 +261,7 @@ model Event {
   title       String
   slug        String
   description String?
-  imageUrl    String?  // Add this field for event image
+  imageUrl    String? // Add this field for event image
 
   startDate DateTime
   endDate   DateTime
@@ -267,10 +271,10 @@ model Event {
   onlineUrl String?
   type      EventType @default(IN_PERSON)
 
-  isFree   Boolean @default(true)
-  capacity Int?
-  price    Float?  @default(0)
-  currency String  @default("USD")
+  isFree     Boolean @default(true)
+  capacity   Int?
+  price      Float?  @default(0)
+  currency   String  @default("USD")
   memberOnly Boolean @default(false)
 
   status      EventStatus @default(DRAFT)
@@ -515,9 +519,9 @@ model Invoice {
   membership   Membership   @relation(fields: [membershipId], references: [id])
   creator      User         @relation("InvoiceCreator", fields: [createdBy], references: [id])
   payer        User?        @relation("InvoicePayer", fields: [paidBy], references: [id])
-  
+
   // New relation for membership system
-  membershipItemId String? @db.ObjectId
+  membershipItemId String?         @db.ObjectId
   membershipItem   MembershipItem? @relation(fields: [membershipItemId], references: [id])
 
   createdAt DateTime @default(now())
@@ -560,9 +564,9 @@ model Payment {
   house          House?          @relation(fields: [houseId], references: [id])
   user           User            @relation(fields: [userId], references: [id])
   ticketPurchase TicketPurchase? @relation(fields: [ticketPurchaseId], references: [id])
-  
+
   // New relation for membership system
-  membershipItemId String? @db.ObjectId
+  membershipItemId String?         @db.ObjectId
   membershipItem   MembershipItem? @relation(fields: [membershipItemId], references: [id])
 
   createdAt DateTime @default(now())
@@ -715,38 +719,38 @@ model AuditLog {
 // ==================== NEW MODELS ====================
 
 model MembershipPlan {
-  id            String   @id @default(auto()) @map("_id") @db.ObjectId
+  id             String  @id @default(auto()) @map("_id") @db.ObjectId
   organizationId String  @db.ObjectId
   houseId        String? @db.ObjectId
-  
-  name          String
-  description   String?
-  type          MembershipPlanType @default(STANDARD)
-  status        MembershipPlanStatus @default(ACTIVE)
-  
+
+  name        String
+  description String?
+  type        MembershipPlanType   @default(STANDARD)
+  status      MembershipPlanStatus @default(ACTIVE)
+
   // Billing settings
   billingFrequency BillingFrequency @default(MONTHLY)
   amount           Float
-  currency         String @default("USD")
-  vatRate          Float? @default(0)
-  setupFee         Float? @default(0)
-  
+  currency         String           @default("USD")
+  vatRate          Float?           @default(0)
+  setupFee         Float?           @default(0)
+
   // Features included
-  features     Json @default("[]")
-  
+  features Json @default("[]")
+
   // Visibility
-  isPublic     Boolean @default(true)
+  isPublic         Boolean @default(true)
   requiresApproval Boolean @default(false)
-  
+
   organization Organization @relation(fields: [organizationId], references: [id])
   house        House?       @relation(fields: [houseId], references: [id])
-  
+
   applications MembershipApplication[]
   memberships  MembershipItem[]
-  
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-  
+
   @@index([organizationId, status])
   @@index([houseId])
 }
@@ -772,44 +776,58 @@ enum BillingFrequency {
 }
 
 model MembershipApplication {
-  id            String   @id @default(auto()) @map("_id") @db.ObjectId
-  organizationId String  @db.ObjectId
+  id               String @id @default(auto()) @map("_id") @db.ObjectId
+  organizationId   String @db.ObjectId
   membershipPlanId String @db.ObjectId
-  
+
   // Applicant info
-  firstName     String
-  lastName      String
-  email         String
-  phone         String?
-  company       String?
-  position      String?
-  
+  firstName String
+  lastName  String
+  email     String
+  phone     String?
+  company   String?
+  position  String?
+
   // Application details
-  status        ApplicationStatus @default(PENDING)
-  notes         String?
-  reviewedBy    String? @db.ObjectId
-  reviewedAt    DateTime?
-  approvedAt    DateTime?
-  rejectedAt    DateTime?
+  status          ApplicationStatus @default(PENDING)
+  notes           String?
+  reviewedBy      String?           @db.ObjectId
+  reviewedAt      DateTime?
+  approvedAt      DateTime?
+  rejectedAt      DateTime?
   rejectionReason String?
-  
+
   // Documents
-  documents     Json @default("[]")
-  metadata      Json @default("{}")
-  
-  organization   Organization    @relation(fields: [organizationId], references: [id])
+  documents Json @default("[]")
+  metadata  Json @default("{}")
+
+  organization   Organization   @relation(fields: [organizationId], references: [id])
   membershipPlan MembershipPlan @relation(fields: [membershipPlanId], references: [id])
-  reviewer       User?           @relation("ApplicationReviewer", fields: [reviewedBy], references: [id])
-  
+  reviewer       User?          @relation("ApplicationReviewer", fields: [reviewedBy], references: [id])
+
   // After approval, this creates a membership
-  membership     MembershipItem?
-  
+  membership MembershipItem?
+
+  // NEW FIELDS for enhanced workflow
+  reviewToken          String?   // Token for plan selection page (remove @unique for MongoDB)
+  reviewTokenSentAt    DateTime? // When the review email was sent
+  selectedPlanId       String?   @db.ObjectId // Plan selected by applicant during review
+  membershipNumber     String?   // Member number assigned on approval (remove @unique for MongoDB)
+  initiationFee        Float?    // Fee amount (can be waived)
+  isInitiationWaived   Boolean   @default(false)
+  proratedAmount       Float?    // Prorated amount for partial period
+  finalAmount          Float?    // Final amount after adjustments
+    stripePaymentMethodId String?  // Add this field
+
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-  
+
   @@index([organizationId, status])
   @@index([membershipPlanId])
   @@index([email])
+  @@index([reviewToken])
+  @@index([membershipNumber])
 }
 
 enum ApplicationStatus {
@@ -818,55 +836,60 @@ enum ApplicationStatus {
   APPROVED
   REJECTED
   WAITLIST
-  CANCELLED 
+  CANCELLED
 }
 
 model MembershipItem {
-  id            String   @id @default(auto()) @map("_id") @db.ObjectId
-  organizationId String  @db.ObjectId
-  membershipPlanId String @db.ObjectId
-  userId         String  @db.ObjectId
-  applicationId  String? @db.ObjectId @unique
-  
+  id               String  @id @default(auto()) @map("_id") @db.ObjectId
+  organizationId   String  @db.ObjectId
+  membershipPlanId String  @db.ObjectId
+  userId           String  @db.ObjectId
+  applicationId    String? @unique @db.ObjectId
+
   // Membership details
-  status        MembershipItemStatus @default(ACTIVE)
-  startDate     DateTime @default(now())
-  endDate       DateTime?
-  cancelAt      DateTime?
-  
+  status    MembershipItemStatus @default(ACTIVE)
+  startDate DateTime             @default(now())
+  endDate   DateTime?
+  cancelAt  DateTime?
+
   // Billing details
   billingFrequency BillingFrequency
   amount           Float
-  currency         String @default("USD")
-  vatRate          Float? @default(0)
-  
+  currency         String           @default("USD")
+  vatRate          Float?           @default(0)
+
   // Payment details
-  stripeCustomerId String?
+  stripeCustomerId     String?
   stripeSubscriptionId String?
-  paymentStatus    PaymentStatus @default(PENDING)
-  nextBillingDate  DateTime?
-  lastBilledAt     DateTime?
-  failedPaymentCount Int @default(0)
-  
+  paymentStatus        PaymentStatus @default(PENDING)
+  nextBillingDate      DateTime?
+  lastBilledAt         DateTime?
+  failedPaymentCount   Int           @default(0)
+
   // Cancellation details
   cancellationReason String?
-  cancelledBy        String? @db.ObjectId
+  cancelledBy        String?   @db.ObjectId
   cancelledAt        DateTime?
   pausedAt           DateTime?
   resumedAt          DateTime?
-  
-  organization   Organization    @relation(fields: [organizationId], references: [id])
-  membershipPlan MembershipPlan @relation(fields: [membershipPlanId], references: [id])
-  user           User           @relation(fields: [userId], references: [id])
-  application    MembershipApplication? @relation(fields: [applicationId], references: [id])
-  cancelledByUser User?          @relation("MembershipCanceller", fields: [cancelledBy], references: [id])
-  
-  invoices       Invoice[]
-  payments       Payment[]
-  
+
+  organization    Organization           @relation(fields: [organizationId], references: [id])
+  membershipPlan  MembershipPlan         @relation(fields: [membershipPlanId], references: [id])
+  user            User                   @relation(fields: [userId], references: [id])
+  application     MembershipApplication? @relation(fields: [applicationId], references: [id])
+  cancelledByUser User?                  @relation("MembershipCanceller", fields: [cancelledBy], references: [id])
+
+  invoices Invoice[]
+  payments Payment[]
+
+  // NEW FIELDS
+  initiationFeePaid   Float?   // Actual initiation fee paid
+  proratedAdjustment  Float?   // Prorated adjustment amount
+  membershipNumber    String?  // Member number (also stored here for easy access)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-  
+
   @@index([organizationId, status])
   @@index([userId])
   @@index([membershipPlanId])
@@ -879,4 +902,64 @@ enum MembershipItemStatus {
   PAUSED
   CANCELLED
   EXPIRED
+}
+
+model CustomForm {
+  id             String     @id @default(auto()) @map("_id") @db.ObjectId
+  organizationId String     @db.ObjectId
+  houseId        String     @db.ObjectId
+  title          String
+  description    String?
+  slug           String     @unique
+  status         FormStatus @default(DRAFT)
+
+  fields   Json @default("[]")
+  settings Json @default("{}")
+
+  submissions FormSubmission[]
+
+  publishedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  house        House        @relation(fields: [houseId], references: [id])
+
+  @@index([organizationId, houseId])
+  @@index([status])
+}
+
+enum FormStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+model FormSubmission {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  formId      String   @db.ObjectId
+  data        Json
+  submittedAt DateTime @default(now())
+
+  userId    String? @db.ObjectId
+  userEmail String?
+
+  status     SubmissionStatus @default(PENDING)
+  reviewedAt DateTime?
+  reviewedBy String?          @db.ObjectId
+  notes      String?
+
+  form     CustomForm @relation(fields: [formId], references: [id])
+  reviewer User?      @relation("FormSubmissionReviewer", fields: [reviewedBy], references: [id])
+
+  @@index([formId])
+  @@index([status])
+  @@index([submittedAt])
+}
+
+enum SubmissionStatus {
+  PENDING
+  REVIEWED
+  APPROVED
+  REJECTED
 }

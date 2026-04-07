@@ -1,33 +1,54 @@
-import { prisma } from "@/lib/db"
+// scripts/check-current-state.ts
+import { prisma } from "../lib/db"
 
-async function main() {
-  await prisma.$transaction([
-    prisma.ticketValidation.deleteMany(),
-    prisma.ticketPurchase.deleteMany(),
-    prisma.payment.deleteMany(),
-    prisma.invoice.deleteMany(),
-    prisma.rSVP.deleteMany(),
-    prisma.report.deleteMany(),
-    prisma.communication.deleteMany(),
-    prisma.auditLog.deleteMany(),
-    prisma.ticket.deleteMany(),
-    prisma.event.deleteMany(),
-    prisma.houseMembership.deleteMany(),
-    prisma.house.deleteMany(),
-    prisma.membership.deleteMany(),
-    prisma.session.deleteMany(),
-    prisma.user.deleteMany(),
-    prisma.organization.deleteMany(),
-  ])
+async function checkCurrentState() {
+  console.log("=== Current Database State ===\n")
 
-  console.log("Database wiped successfully.")
+  // Check users
+  const users = await prisma.user.findMany()
+  console.log(`Users: ${users.length}`)
+  users.forEach(u => console.log(`  - ${u.id}: ${u.email}`))
+
+  // Check memberships
+  const memberships = await prisma.membership.findMany({
+    include: {
+      user: true,
+    },
+  })
+  console.log(`\nMemberships: ${memberships.length}`)
+  memberships.forEach(m => {
+    console.log(`  - ${m.id}: user=${m.user?.email || 'NO USER'} (org=${m.organizationId})`)
+  })
+
+  // Check house memberships
+  const houseMemberships = await prisma.houseMembership.findMany({
+    include: {
+      membership: {
+        include: {
+          user: true,
+        },
+      },
+      house: true,
+    },
+  })
+  console.log(`\nHouse Memberships: ${houseMemberships.length}`)
+  houseMemberships.forEach(hm => {
+    console.log(`  - ${hm.id}: house=${hm.house?.name}, user=${hm.membership?.user?.email || 'NO USER'}`)
+  })
+
+  // Check membership items
+  const items = await prisma.membershipItem.findMany({
+    include: {
+      user: true,
+      membershipPlan: true,
+    },
+  })
+  console.log(`\nMembership Items: ${items.length}`)
+  items.forEach(item => {
+    console.log(`  - ${item.id}: user=${item.user?.email || 'NO USER'}, plan=${item.membershipPlan?.name || 'NO PLAN'}`)
+  })
 }
 
-main()
-  .catch((e) => {
-    console.error("Wipe failed:", e)
-    process.exit(1)
-  })
-  .finally(async () => {
-    await prisma.$disconnect()
-  })
+checkCurrentState()
+  .catch(console.error)
+  .finally(() => process.exit())

@@ -1,3 +1,4 @@
+// lib/email/index.ts
 import { Resend } from "resend"
 import { render } from "@react-email/render"
 import { InvitationEmail } from "./templates/invitation"
@@ -11,6 +12,57 @@ const resend = new Resend(process.env.RESEND_API_KEY)
 const isDev = process.env.NODE_ENV === "development"
 const forceSendEmails = process.env.FORCE_SEND_EMAILS === "true"
 const FROM_EMAIL = "connect@theburnsbrothers.com"
+
+// Generic sendEmail function
+export async function sendEmail({
+  to,
+  subject,
+  html,
+  from = FROM_EMAIL,
+}: {
+  to: string
+  subject: string
+  html: string
+  from?: string
+}) {
+  console.log("\n" + "=".repeat(60))
+  console.log("📧 SENDING EMAIL")
+  console.log("=".repeat(60))
+  console.log(`From: ${from}`)
+  console.log(`To: ${to}`)
+  console.log(`Subject: ${subject}`)
+  console.log("=".repeat(60) + "\n")
+
+  if (isDev && !forceSendEmails) {
+    console.log("✅ Email logged (development mode - no email sent)")
+    return { success: true, logged: true }
+  }
+
+  if (!process.env.RESEND_API_KEY) {
+    console.log("❌ RESEND_API_KEY not configured. Email not sent.")
+    return { error: "No API key configured", logged: true }
+  }
+
+  try {
+    const { data, error } = await resend.emails.send({
+      from,
+      to,
+      subject,
+      html,
+    })
+
+    if (error) {
+      console.error("❌ Resend error:", error)
+      return { error: error.message }
+    }
+
+    console.log(`✅ Email sent to ${to}`)
+    return { success: true, data }
+  } catch (error) {
+    console.error("❌ Failed to send email:", error)
+    return { error: "Failed to send email" }
+  }
+}
 
 export async function sendInvitationEmail(
   email: string,

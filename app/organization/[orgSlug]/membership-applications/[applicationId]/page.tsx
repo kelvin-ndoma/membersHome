@@ -1,3 +1,4 @@
+// app/organization/[orgSlug]/membership-applications/[applicationId]/page.tsx
 "use client"
 
 import { useState, useEffect } from "react"
@@ -8,6 +9,15 @@ import { Button } from "@/components/ui/Button"
 import { Badge } from "@/components/ui/Badge"
 import { Textarea } from "@/components/ui/Textarea"
 import { Label } from "@/components/ui/Label"
+import { Input } from "@/components/ui/Input"
+import { Switch } from "@/components/ui/Switch"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/Select"
 import { 
   CheckCircle, 
   XCircle, 
@@ -23,7 +33,8 @@ import {
   Eye,
   Ban,
   RefreshCw,
-  Home
+  Home,
+  DollarSign
 } from "lucide-react"
 import { format } from "date-fns"
 import Link from "next/link"
@@ -68,6 +79,10 @@ interface Application {
     cancelledAt: string | null
     cancellationReason: string | null
   } | null
+  selectedPlanId?: string
+  membershipNumber?: string
+  isInitiationWaived?: boolean
+  proratedAmount?: number
 }
 
 // Pipeline steps
@@ -97,10 +112,25 @@ export default function ApplicationDetailPage() {
   const [showWaitlistNote, setShowWaitlistNote] = useState(false)
   const [waitlistNote, setWaitlistNote] = useState("")
   const [refreshTrigger, setRefreshTrigger] = useState(0)
+  
+  // New approval options state
+  const [availablePlans, setAvailablePlans] = useState<any[]>([])
+  const [selectedPlanId, setSelectedPlanId] = useState("")
+  const [membershipNumber, setMembershipNumber] = useState("")
+  const [waiveInitiationFee, setWaiveInitiationFee] = useState(false)
+  const [proratedAmount, setProratedAmount] = useState("")
+  const [loadingPlans, setLoadingPlans] = useState(false)
 
   useEffect(() => {
     fetchApplication()
   }, [applicationId, refreshTrigger])
+
+  // Fetch available plans when application loads
+  useEffect(() => {
+    if (application?.membershipPlan?.houseId) {
+      fetchAvailablePlans()
+    }
+  }, [application])
 
   const fetchApplication = async () => {
     setLoading(true)
@@ -124,6 +154,15 @@ export default function ApplicationDetailPage() {
       }
       
       setApplication(data)
+      // Set selected plan from application if available
+      if (data.selectedPlanId) {
+        setSelectedPlanId(data.selectedPlanId)
+      } else if (data.membershipPlan?.id) {
+        setSelectedPlanId(data.membershipPlan.id)
+      }
+      if (data.membershipNumber) setMembershipNumber(data.membershipNumber)
+      if (data.isInitiationWaived) setWaiveInitiationFee(true)
+      if (data.proratedAmount) setProratedAmount(data.proratedAmount.toString())
     } catch (error) {
       console.error("Error fetching application:", error)
       toast.error("Failed to load application")
@@ -132,16 +171,44 @@ export default function ApplicationDetailPage() {
     }
   }
 
-  const updateStatus = async (status: string, reason?: string) => {
+  const fetchAvailablePlans = async () => {
+    setLoadingPlans(true)
+    try {
+      const houseId = application?.membershipPlan?.houseId
+      if (!houseId) return
+      
+      const res = await fetch(`/api/organizations/${orgSlug}/houses/${houseId}/membership-plans`)
+      if (res.ok) {
+        const data = await res.json()
+        setAvailablePlans(data.plans || [])
+      }
+    } catch (error) {
+      console.error("Error fetching plans:", error)
+    } finally {
+      setLoadingPlans(false)
+    }
+  }
+
+  const updateStatus = async (status: string, reason?: string, additionalData?: any) => {
     setProcessing(true)
     try {
+      const body: any = { 
+        status, 
+        rejectionReason: reason 
+      }
+      
+      // Add approval options when approving
+      if (status === "APPROVED" && additionalData) {
+        body.membershipNumber = additionalData.membershipNumber
+        body.waiveInitiationFee = additionalData.waiveInitiationFee
+        body.proratedAmount = additionalData.proratedAmount
+        body.selectedPlanId = additionalData.selectedPlanId
+      }
+      
       const res = await fetch(`/api/organizations/${orgSlug}/membership-applications/${applicationId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ 
-          status, 
-          rejectionReason: reason 
-        }),
+        body: JSON.stringify(body),
       })
 
       if (!res.ok) throw new Error("Failed to update status")
@@ -157,6 +224,15 @@ export default function ApplicationDetailPage() {
     } finally {
       setProcessing(false)
     }
+  }
+
+  const handleApprove = () => {
+    updateStatus("APPROVED", undefined, {
+      membershipNumber,
+      waiveInitiationFee,
+      proratedAmount: proratedAmount ? parseFloat(proratedAmount) : undefined,
+      selectedPlanId,
+    })
   }
 
   const getCurrentStepIndex = () => {
@@ -176,6 +252,9 @@ export default function ApplicationDetailPage() {
     }
     return `/organization/${orgSlug}/membership-applications`
   }
+
+  const selectedPlan = availablePlans.find(p => p.id === selectedPlanId)
+  const currentPlan = application?.membershipPlan
 
   if (loading) {
     return (
@@ -407,33 +486,113 @@ export default function ApplicationDetailPage() {
               )}
 
               {isReviewing && (
-                <div className="space-y-3">
-                  <Button
-                    className="w-full"
-                    onClick={() => updateStatus("APPROVED")}
-                    disabled={processing}
-                  >
-                    <CheckCircle className="mr-2 h-4 w-4 text-green-600" />
-                    Approve Application
-                  </Button>
-                  <Button
-                    variant="outline"
-                    className="w-full"
-                    onClick={() => setShowWaitlistNote(true)}
-                    disabled={processing}
-                  >
-                    <Clock className="mr-2 h-4 w-4" />
-                    Add to Waitlist
-                  </Button>
-                  <Button
-                    variant="destructive"
-                    className="w-full"
-                    onClick={() => setShowRejectionInput(true)}
-                    disabled={processing}
-                  >
-                    <XCircle className="mr-2 h-4 w-4" />
-                    Reject Application
-                  </Button>
+                <div className="space-y-4">
+                  {/* Membership Plan Selection */}
+                  <div className="space-y-2">
+                    <Label>Membership Plan</Label>
+                    <Select value={selectedPlanId} onValueChange={setSelectedPlanId}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select a plan" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {availablePlans.map((plan) => (
+                          <SelectItem key={plan.id} value={plan.id}>
+                            {plan.name} - ${plan.amount}/{plan.billingFrequency.toLowerCase()}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* Membership Number */}
+                  <div className="space-y-2">
+                    <Label>Membership Number (Optional)</Label>
+                    <Input
+                      placeholder="e.g., MEM-001"
+                      value={membershipNumber}
+                      onChange={(e) => setMembershipNumber(e.target.value)}
+                    />
+                  </div>
+
+                  {/* Initiation Fee */}
+                  <div className="flex items-center justify-between">
+                    <Label>Waive Initiation Fee</Label>
+                    <Switch
+                      checked={waiveInitiationFee}
+                      onCheckedChange={setWaiveInitiationFee}
+                    />
+                  </div>
+
+                  {/* Prorated Amount */}
+                  {!waiveInitiationFee && (
+                    <div className="space-y-2">
+                      <Label>Prorated Amount (Optional)</Label>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        placeholder="Leave empty for full amount"
+                        value={proratedAmount}
+                        onChange={(e) => setProratedAmount(e.target.value)}
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Enter a custom amount to prorate the first billing period
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Plan Summary */}
+                  {selectedPlan && (
+                    <div className="rounded-lg bg-muted p-3">
+                      <p className="text-sm font-medium mb-2">Plan Summary</p>
+                      <div className="space-y-1 text-sm">
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Price</span>
+                          <span>${selectedPlan.amount}/{selectedPlan.billingFrequency.toLowerCase()}</span>
+                        </div>
+                        {selectedPlan.setupFee && selectedPlan.setupFee > 0 && !waiveInitiationFee && (
+                          <div className="flex justify-between">
+                            <span className="text-muted-foreground">Initiation Fee</span>
+                            <span>${selectedPlan.setupFee}</span>
+                          </div>
+                        )}
+                        {proratedAmount && (
+                          <div className="flex justify-between">
+                            <span className="text-muted-foreground">Prorated First Payment</span>
+                            <span>${proratedAmount}</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="flex gap-2 pt-2">
+                    <Button
+                      className="flex-1 bg-green-600 hover:bg-green-700"
+                      onClick={handleApprove}
+                      disabled={processing}
+                    >
+                      <CheckCircle className="mr-2 h-4 w-4" />
+                      Approve
+                    </Button>
+                    <Button
+                      variant="outline"
+                      className="flex-1"
+                      onClick={() => setShowWaitlistNote(true)}
+                      disabled={processing}
+                    >
+                      <Clock className="mr-2 h-4 w-4" />
+                      Waitlist
+                    </Button>
+                    <Button
+                      variant="destructive"
+                      className="flex-1"
+                      onClick={() => setShowRejectionInput(true)}
+                      disabled={processing}
+                    >
+                      <XCircle className="mr-2 h-4 w-4" />
+                      Reject
+                    </Button>
+                  </div>
                 </div>
               )}
 

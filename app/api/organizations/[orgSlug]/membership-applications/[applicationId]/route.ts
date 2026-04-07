@@ -4,7 +4,9 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth/config"
 import { prisma } from "@/lib/db"
 import { generateInviteToken, hashToken } from "@/lib/utils/tokens"
-import { sendAccountSetupEmail } from "@/lib/email"
+import { sendAccountSetupEmail, sendEmail } from "@/lib/email"
+import { render } from "@react-email/render"
+import { PlanSelectionRequestEmail } from "@/lib/email/templates/plan-selection-request"
 
 // Get single application
 export async function GET(
@@ -137,9 +139,9 @@ export async function PATCH(
     console.log("Organization found:", { id: organization.id, name: organization.name })
 
     const body = await req.json()
-    const { status, rejectionReason } = body
+    const { status, rejectionReason, membershipNumber, waiveInitiationFee, proratedAmount, selectedPlanId } = body
 
-    console.log("Request body:", { status, rejectionReason })
+    console.log("Request body:", { status, rejectionReason, membershipNumber, waiveInitiationFee, proratedAmount, selectedPlanId })
 
     const application = await prisma.membershipApplication.findFirst({
       where: {
@@ -180,18 +182,74 @@ export async function PATCH(
     let createdHouseMembership = null
     let createdMembershipItem = null
 
+    // Handle REVIEWING status - send plan selection email
+    if (status === "REVIEWING") {
+      console.log("=== Processing REVIEWING ===")
+      
+      // Generate a unique token for plan selection
+      const reviewToken = generateInviteToken()
+      const hashedToken = hashToken(reviewToken)
+      
+      // Get the house for the email
+      const house = application.membershipPlan.house
+      
+      // Update application with review token
+      await prisma.membershipApplication.update({
+        where: { id: applicationId },
+        data: {
+          status: "REVIEWING",
+          reviewToken: hashedToken,
+          reviewTokenSentAt: new Date(),
+        },
+      })
+      
+      // Send email with plan selection link
+      const selectPlanUrl = `${process.env.NEXT_PUBLIC_APP_URL}/apply/${orgSlug}/${house?.slug}/select-plan?token=${reviewToken}`
+      
+      const emailHtml = await render(
+        PlanSelectionRequestEmail({
+          name: application.firstName,
+          houseName: house?.name || "our community",
+          selectPlanUrl,
+        })
+      )
+      
+      await sendEmail({
+        to: application.email,
+        subject: `Select Your Membership Plan - ${house?.name}`,
+        html: emailHtml,
+      })
+      
+      console.log(`📧 Plan selection email sent to ${application.email}`)
+    }
+
+    // Handle APPROVED status
     if (status === "APPROVED") {
       console.log("=== Processing APPROVAL ===")
       
-      // Get the house from the membership plan
-      const targetHouseId = application.membershipPlan.houseId
+      // Use selected plan or the original one
+      const finalPlanId = selectedPlanId || application.membershipPlanId
+      
+      // Get the plan details
+      const plan = await prisma.membershipPlan.findUnique({
+        where: { id: finalPlanId },
+        include: { house: true },
+      })
 
-      console.log("Target House ID from plan:", targetHouseId)
+      if (!plan) {
+        console.error("❌ Plan not found:", finalPlanId)
+        return NextResponse.json(
+          { error: "Selected plan not found" },
+          { status: 400 }
+        )
+      }
+
+      const targetHouseId = plan.houseId
 
       if (!targetHouseId) {
-        console.error("❌ No house associated with membership plan:", application.membershipPlanId)
+        console.error("❌ No house associated with membership plan:", finalPlanId)
         return NextResponse.json(
-          { error: "Membership plan is not associated with a house. Please assign a house to this plan first." },
+          { error: "Membership plan is not associated with a house." },
           { status: 400 }
         )
       }
@@ -266,111 +324,153 @@ export async function PATCH(
         )
       }
 
-      // Create Organization Membership (Membership table)
-      createdMembership = await prisma.membership.create({
-        data: {
+      // Check if user already has a membership for this organization
+      let membershipRecord = await prisma.membership.findFirst({
+        where: {
           userId: user.id,
           organizationId: organization.id,
-          organizationRole: "MEMBER",
-          status: "ACTIVE",
-          joinedAt: new Date(),
         },
       })
-      console.log("✅ Created organization membership:", {
-        id: createdMembership.id,
-        userId: user.id,
-        organizationId: organization.id,
-        status: createdMembership.status
-      })
 
-      // 🔑 CRITICAL: Create House Membership
-      console.log("🔑 Creating house membership with:", {
-        houseId: targetHouseId,
-        membershipId: createdMembership.id,
-        role: "HOUSE_MEMBER",
-        status: "ACTIVE"
-      })
+      if (!membershipRecord) {
+        // Create Organization Membership
+        membershipRecord = await prisma.membership.create({
+          data: {
+            userId: user.id,
+            organizationId: organization.id,
+            organizationRole: "MEMBER",
+            status: "ACTIVE",
+            joinedAt: new Date(),
+          },
+        })
+        createdMembership = membershipRecord
+        console.log("✅ Created new organization membership:", membershipRecord.id)
+      } else {
+        console.log("✅ Using existing organization membership:", membershipRecord.id)
+        createdMembership = membershipRecord
+      }
 
-      createdHouseMembership = await prisma.houseMembership.create({
-        data: {
-          houseId: targetHouseId,
-          membershipId: createdMembership.id,
-          role: "HOUSE_MEMBER",
-          status: "ACTIVE",
-          joinedAt: new Date(),
-        },
-      })
-      console.log("✅ Created house membership:", {
-        id: createdHouseMembership.id,
-        houseId: createdHouseMembership.houseId,
-        membershipId: createdHouseMembership.membershipId,
-        role: createdHouseMembership.role,
-        status: createdHouseMembership.status
-      })
-
-      // Verify the house membership was created correctly
-      const verifyHouseMembership = await prisma.houseMembership.findFirst({
+      // Check if house membership already exists
+      const existingHouseMembership = await prisma.houseMembership.findFirst({
         where: {
           houseId: targetHouseId,
-          membershipId: createdMembership.id,
+          membershipId: membershipRecord.id,
         },
-        include: { house: true }
       })
 
-      console.log("🔍 Verification - House membership in database:", {
-        exists: !!verifyHouseMembership,
-        id: verifyHouseMembership?.id,
-        houseId: verifyHouseMembership?.houseId,
-        houseName: verifyHouseMembership?.house?.name,
-        membershipId: verifyHouseMembership?.membershipId,
-        status: verifyHouseMembership?.status,
-        role: verifyHouseMembership?.role
-      })
+      if (!existingHouseMembership) {
+        // Create House Membership
+        createdHouseMembership = await prisma.houseMembership.create({
+          data: {
+            houseId: targetHouseId,
+            membershipId: membershipRecord.id,
+            role: "HOUSE_MEMBER",
+            status: "ACTIVE",
+            joinedAt: new Date(),
+          },
+        })
+        console.log("✅ Created new house membership:", createdHouseMembership.id)
+      } else {
+        console.log("✅ House membership already exists")
+        createdHouseMembership = existingHouseMembership
+      }
 
-      // Create Membership Item (paid subscription)
-      createdMembershipItem = await prisma.membershipItem.create({
-        data: {
+      // Calculate final amount
+      let finalAmount = plan.amount
+      if (proratedAmount && proratedAmount > 0) {
+        finalAmount = proratedAmount
+      }
+      
+      let initiationFee = plan.setupFee || 0
+      if (waiveInitiationFee) {
+        initiationFee = 0
+      }
+
+      // Check if membership item already exists
+      const existingMembershipItem = await prisma.membershipItem.findFirst({
+        where: {
           userId: user.id,
           organizationId: organization.id,
-          membershipPlanId: application.membershipPlanId,
-          applicationId: application.id,
-          billingFrequency: application.membershipPlan.billingFrequency,
-          amount: application.membershipPlan.amount,
-          vatRate: application.membershipPlan.vatRate,
+          membershipPlanId: finalPlanId,
           status: "ACTIVE",
-          nextBillingDate: new Date(),
         },
       })
-      console.log("✅ Created membership item:", {
-        id: createdMembershipItem.id,
-        userId: user.id,
-        planId: application.membershipPlanId,
-        amount: createdMembershipItem.amount
+
+      if (!existingMembershipItem) {
+        // Create Membership Item with all details
+        createdMembershipItem = await prisma.membershipItem.create({
+          data: {
+            userId: user.id,
+            organizationId: organization.id,
+            membershipPlanId: finalPlanId,
+            applicationId: application.id,
+            billingFrequency: plan.billingFrequency,
+            amount: finalAmount,
+            vatRate: plan.vatRate,
+            status: "ACTIVE",
+            nextBillingDate: new Date(),
+            initiationFeePaid: initiationFee,
+            proratedAdjustment: proratedAmount || null,
+            membershipNumber: membershipNumber || null,
+          },
+        })
+        console.log("✅ Created new membership item:", createdMembershipItem.id)
+      } else {
+        console.log("✅ Membership item already exists")
+        createdMembershipItem = existingMembershipItem
+      }
+
+      // Update application with approval details
+      await prisma.membershipApplication.update({
+        where: { id: applicationId },
+        data: {
+          status: "APPROVED",
+          approvedAt: new Date(),
+          reviewedBy: session.user.id,
+          reviewedAt: new Date(),
+          membershipNumber: membershipNumber || null,
+          initiationFee: initiationFee,
+          isInitiationWaived: waiveInitiationFee || false,
+          proratedAmount: proratedAmount || null,
+          finalAmount,
+          selectedPlanId: finalPlanId,
+        },
       })
 
       console.log("=== Approval Summary ===")
       console.log("User created:", !!createdUser)
-      console.log("Membership created:", !!createdMembership)
-      console.log("House membership created:", !!createdHouseMembership)
-      console.log("Membership item created:", !!createdMembershipItem)
+      console.log("Membership created/used:", !!createdMembership)
+      console.log("House membership created/used:", !!createdHouseMembership)
+      console.log("Membership item created/used:", !!createdMembershipItem)
+      console.log("Membership number:", membershipNumber)
+      console.log("Initiation fee:", initiationFee)
+      console.log("Prorated amount:", proratedAmount)
+      console.log("Final amount:", finalAmount)
       console.log("House name:", houseExists.name)
       console.log("House ID:", targetHouseId)
     }
 
-    // Update application with new status
-    const updatedApplication = await prisma.membershipApplication.update({
-      where: { id: applicationId },
-      data: {
-        status,
-        rejectionReason: status === "REJECTED" ? rejectionReason : null,
-        reviewedBy: session.user.id,
-        reviewedAt: new Date(),
-        approvedAt: status === "APPROVED" ? new Date() : null,
-        rejectedAt: status === "REJECTED" ? new Date() : null,
-      },
-    })
+    // Update application with new status (for non-APPROVED or if already updated)
+    if (status !== "APPROVED" && status !== "REVIEWING") {
+      const updatedApplication = await prisma.membershipApplication.update({
+        where: { id: applicationId },
+        data: {
+          status,
+          rejectionReason: status === "REJECTED" ? rejectionReason : null,
+          reviewedBy: session.user.id,
+          reviewedAt: new Date(),
+          approvedAt: status === "APPROVED" ? new Date() : null,
+          rejectedAt: status === "REJECTED" ? new Date() : null,
+        },
+      })
+      console.log("Application updated with status:", status)
+      return NextResponse.json(updatedApplication)
+    }
 
-    console.log("Application updated with status:", status)
+    // Return response for REVIEWING or APPROVED
+    const updatedApplication = await prisma.membershipApplication.findUnique({
+      where: { id: applicationId },
+    })
 
     return NextResponse.json({
       ...updatedApplication,

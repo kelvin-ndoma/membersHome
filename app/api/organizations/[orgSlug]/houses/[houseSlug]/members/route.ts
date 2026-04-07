@@ -1,19 +1,50 @@
+// app/api/organizations/[orgSlug]/houses/[houseSlug]/members/route.ts
 import { NextResponse } from "next/server"
+import { getServerSession } from "next-auth"
+import { authOptions } from "@/lib/auth/config"
 import { prisma } from "@/lib/db"
-import { requireHouseAccess } from "@/lib/auth"
 
 export async function GET(
   req: Request,
   { params }: { params: { orgSlug: string; houseSlug: string } }
 ) {
   try {
-    await requireHouseAccess(params.orgSlug, params.houseSlug)
+    const session = await getServerSession(authOptions)
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
 
-    const { searchParams } = new URL(req.url)
-    const page = parseInt(searchParams.get("page") || "1")
-    const pageSize = parseInt(searchParams.get("pageSize") || "10")
-    const search = searchParams.get("search") || ""
-    const role = searchParams.get("role")
+    // First, check if user is an organization admin
+    const adminMembership = await prisma.membership.findFirst({
+      where: {
+        userId: session.user.id,
+        organization: { slug: params.orgSlug },
+        organizationRole: { in: ["ORG_ADMIN", "ORG_OWNER"] },
+      },
+    })
+
+    const isOrgAdmin = !!adminMembership
+
+    // If not org admin, check if they are a house admin/member
+    if (!isOrgAdmin) {
+      const houseMembership = await prisma.houseMembership.findFirst({
+        where: {
+          membership: {
+            userId: session.user.id,
+            organization: { slug: params.orgSlug },
+          },
+          house: { slug: params.houseSlug },
+          status: "ACTIVE",
+        },
+      })
+
+      if (!houseMembership || houseMembership.role !== "HOUSE_ADMIN") {
+        return NextResponse.json(
+          { error: "Forbidden" },
+          { status: 403 }
+        )
+      }
+    }
 
     const organization = await prisma.organization.findUnique({
       where: { slug: params.orgSlug },
@@ -27,12 +58,10 @@ export async function GET(
       )
     }
 
-    const house = await prisma.house.findUnique({
+    const house = await prisma.house.findFirst({
       where: {
-        organizationId_slug: {
-          organizationId: organization.id,
-          slug: params.houseSlug,
-        },
+        slug: params.houseSlug,
+        organizationId: organization.id,
       },
     })
 
@@ -43,9 +72,20 @@ export async function GET(
       )
     }
 
+    const { searchParams } = new URL(req.url)
+    const page = parseInt(searchParams.get("page") || "1")
+    const pageSize = parseInt(searchParams.get("pageSize") || "10")
+    const search = searchParams.get("search") || ""
+    const role = searchParams.get("role")
+    const membershipId = searchParams.get("membershipId")
+
     const where: any = {
       houseId: house.id,
       status: "ACTIVE",
+    }
+
+    if (membershipId) {
+      where.membershipId = membershipId
     }
 
     if (role) {
@@ -116,15 +156,41 @@ export async function POST(
   { params }: { params: { orgSlug: string; houseSlug: string } }
 ) {
   try {
-    // Check if user has access to this house
-    const { houseMembership: currentMember } = await requireHouseAccess(params.orgSlug, params.houseSlug)
-    
-    // Only house admins can add members
-    if (currentMember.role !== "HOUSE_ADMIN") {
-      return NextResponse.json(
-        { error: "Only house admins can add members" },
-        { status: 403 }
-      )
+    const session = await getServerSession(authOptions)
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
+
+    // Check if user is organization admin
+    const adminMembership = await prisma.membership.findFirst({
+      where: {
+        userId: session.user.id,
+        organization: { slug: params.orgSlug },
+        organizationRole: { in: ["ORG_ADMIN", "ORG_OWNER"] },
+      },
+    })
+
+    const isOrgAdmin = !!adminMembership
+
+    // If not org admin, check if they are a house admin
+    if (!isOrgAdmin) {
+      const houseMembership = await prisma.houseMembership.findFirst({
+        where: {
+          membership: {
+            userId: session.user.id,
+            organization: { slug: params.orgSlug },
+          },
+          house: { slug: params.houseSlug },
+          status: "ACTIVE",
+        },
+      })
+
+      if (!houseMembership || houseMembership.role !== "HOUSE_ADMIN") {
+        return NextResponse.json(
+          { error: "Only house admins can add members" },
+          { status: 403 }
+        )
+      }
     }
 
     const organization = await prisma.organization.findUnique({
@@ -139,12 +205,10 @@ export async function POST(
       )
     }
 
-    const house = await prisma.house.findUnique({
+    const house = await prisma.house.findFirst({
       where: {
-        organizationId_slug: {
-          organizationId: organization.id,
-          slug: params.houseSlug,
-        },
+        slug: params.houseSlug,
+        organizationId: organization.id,
       },
     })
 

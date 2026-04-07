@@ -10,11 +10,12 @@ import {
   Calendar,
   Ticket,
   DollarSign,
-  ClipboardList,
   Settings,
   Home,
   CreditCard,
   ArrowLeft,
+  FileText,
+  ClipboardList,
 } from "lucide-react"
 import { Button } from "@/components/ui/Button"
 
@@ -77,6 +78,12 @@ export function HouseSidebar({ orgSlug, house, isOpen = false, onClose, onBackTo
       label: "Billing",
       icon: CreditCard,
       active: pathname === `/organization/${orgSlug}/houses/${house.slug}/billing`,
+    },
+    {
+      href: `/organization/${orgSlug}/houses/${house.slug}/forms`,
+      label: "Forms",
+      icon: FileText,
+      active: pathname === `/organization/${orgSlug}/houses/${house.slug}/forms`,
     },
     {
       href: `/organization/${orgSlug}/houses/${house.slug}/settings`,
