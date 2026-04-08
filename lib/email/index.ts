@@ -1,29 +1,38 @@
-// lib/email/index.ts
 import { Resend } from "resend"
 import { render } from "@react-email/render"
-import { InvitationEmail } from "./templates/invitation"
-import { WelcomeEmail } from "./templates/welcome"
-import { InvoiceEmail } from "./templates/invoice"
-import { ResetPasswordEmail } from "./templates/reset-password"
-import { TicketPurchaseEmail } from "./templates/ticket-purchase"
-import { AccountSetupEmail } from "./templates/account-setup"
+
+import { VerificationEmail } from "./templates/verification"
+import { PasswordResetEmail } from "./templates/password-reset"
+import { InviteEmail } from "./templates/invite"
+import { OrgOwnerInvitationEmail } from "./templates/org-owner-invitation"
+import { MemberInvitationEmail } from "./templates/member-invitation"
+import { MembershipApprovedEmail } from "./templates/membership-approved"
+import { MembershipRejectedEmail } from "./templates/membership-rejected"
+import { EventReminderEmail } from "./templates/event-reminder"
+import { PaymentReceiptEmail } from "./templates/payment-receipt"
+import { CancellationConfirmationEmail } from "./templates/cancellation-confirmation"
+import { AnnouncementEmail } from "./templates/announcement"
 
 const resend = new Resend(process.env.RESEND_API_KEY)
 const isDev = process.env.NODE_ENV === "development"
 const forceSendEmails = process.env.FORCE_SEND_EMAILS === "true"
-const FROM_EMAIL = "connect@theburnsbrothers.com"
 
-// Generic sendEmail function
+// Get email configuration from environment variables
+const FROM_EMAIL = process.env.EMAIL_FROM || "membersHome <noreply@membershome.com>"
+const REPLY_TO_EMAIL = process.env.EMAIL_REPLY_TO
+
 export async function sendEmail({
   to,
   subject,
   html,
   from = FROM_EMAIL,
+  replyTo = REPLY_TO_EMAIL,
 }: {
   to: string
   subject: string
   html: string
   from?: string
+  replyTo?: string
 }) {
   console.log("\n" + "=".repeat(60))
   console.log("📧 SENDING EMAIL")
@@ -31,6 +40,7 @@ export async function sendEmail({
   console.log(`From: ${from}`)
   console.log(`To: ${to}`)
   console.log(`Subject: ${subject}`)
+  if (replyTo) console.log(`Reply-To: ${replyTo}`)
   console.log("=".repeat(60) + "\n")
 
   if (isDev && !forceSendEmails) {
@@ -44,12 +54,18 @@ export async function sendEmail({
   }
 
   try {
-    const { data, error } = await resend.emails.send({
+    const emailOptions: any = {
       from,
       to,
       subject,
       html,
-    })
+    }
+    
+    if (replyTo) {
+      emailOptions.replyTo = replyTo
+    }
+    
+    const { data, error } = await resend.emails.send(emailOptions)
 
     if (error) {
       console.error("❌ Resend error:", error)
@@ -64,259 +80,72 @@ export async function sendEmail({
   }
 }
 
-export async function sendInvitationEmail(
-  email: string,
-  organizationName: string,
-  inviteToken: string
+export async function sendVerificationEmail(email: string, verificationLink: string, name?: string) {
+  const html = await render(VerificationEmail({ verificationLink, name }))
+  return sendEmail({ to: email, subject: "Verify your email address", html })
+}
+
+export async function sendPasswordResetEmail(email: string, resetLink: string, name?: string) {
+  const html = await render(PasswordResetEmail({ resetLink, name }))
+  return sendEmail({ to: email, subject: "Reset your password", html })
+}
+
+export async function sendInviteEmail(email: string, name: string, organizationName: string, acceptLink: string, inviterName?: string) {
+  const html = await render(InviteEmail({ name, organizationName, inviterName, acceptLink }))
+  return sendEmail({ to: email, subject: `You're invited to join ${organizationName} on membersHome`, html })
+}
+
+export async function sendOrgOwnerInvitationEmail(
+  email: string, 
+  organizationName: string, 
+  setupLink: string, 
+  inviterName?: string
 ) {
-  const inviteUrl = `${process.env.NEXT_PUBLIC_APP_URL}/invitations/${inviteToken}`
-
-  console.log("\n" + "=".repeat(60))
-  console.log("📧 INVITATION EMAIL")
-  console.log("=".repeat(60))
-  console.log(`From: ${FROM_EMAIL}`)
-  console.log(`To: ${email}`)
-  console.log(`Organization: ${organizationName}`)
-  console.log(`Invite Token: ${inviteToken}`)
-  console.log(`Accept Link: ${inviteUrl}`)
-  console.log("=".repeat(60) + "\n")
-
-  if (isDev && !forceSendEmails) {
-    console.log("✅ Email logged (development mode - no email sent)")
-    return { success: true, logged: true }
-  }
-
-  if (!process.env.RESEND_API_KEY) {
-    console.log("❌ RESEND_API_KEY not configured. Email not sent.")
-    return { error: "No API key configured", logged: true }
-  }
-
-  try {
-    const html = await render(InvitationEmail({ organizationName, inviteUrl }))
-    const { data, error } = await resend.emails.send({
-      from: FROM_EMAIL,
-      to: email,
-      subject: `Invitation to join ${organizationName}`,
-      html: html,
-    })
-
-    if (error) {
-      console.error("❌ Resend error:", error)
-      return { error: error.message, logged: true }
-    }
-
-    console.log(`✅ Email sent to ${email}:`, data)
-    return { success: true, data }
-  } catch (error) {
-    console.error("❌ Failed to send email:", error)
-    console.log(`📋 Invitation link for ${email}: ${inviteUrl}`)
-    return { error: "Email failed but invitation created", inviteUrl, logged: true }
-  }
+  const html = await render(OrgOwnerInvitationEmail({ organizationName, inviterName, setupLink }))
+  return sendEmail({ 
+    to: email, 
+    subject: `You're invited to own ${organizationName} on membersHome`, 
+    html 
+  })
 }
 
-export async function sendAccountSetupEmail(
-  email: string,
-  name: string,
-  organizationName: string,
-  inviteToken: string
+export async function sendMemberInvitationEmail(
+  email: string, 
+  organizationName: string, 
+  houseName: string, 
+  acceptLink: string, 
+  inviterName?: string
 ) {
-  const setupUrl = `${process.env.NEXT_PUBLIC_APP_URL}/auth/setup-account?token=${inviteToken}&email=${encodeURIComponent(email)}`
-
-  console.log("\n" + "=".repeat(60))
-  console.log("📧 ACCOUNT SETUP EMAIL")
-  console.log("=".repeat(60))
-  console.log(`From: ${FROM_EMAIL}`)
-  console.log(`To: ${email}`)
-  console.log(`Organization: ${organizationName}`)
-  console.log(`Setup Link: ${setupUrl}`)
-  console.log("=".repeat(60) + "\n")
-
-  if (isDev && !forceSendEmails) {
-    console.log("✅ Email logged (development mode - no email sent)")
-    return { success: true, logged: true }
-  }
-
-  if (!process.env.RESEND_API_KEY) {
-    console.log("❌ RESEND_API_KEY not configured. Email not sent.")
-    console.log(`📋 Account setup link for ${email}: ${setupUrl}`)
-    return { error: "No API key configured", logged: true }
-  }
-
-  try {
-    const html = await render(AccountSetupEmail({ name, organizationName, setupUrl }))
-    const { data, error } = await resend.emails.send({
-      from: FROM_EMAIL,
-      to: email,
-      subject: `Complete your ${organizationName} membership setup`,
-      html: html,
-    })
-
-    if (error) {
-      console.error("❌ Resend error:", error)
-      return { error: error.message }
-    }
-
-    console.log(`✅ Account setup email sent to ${email}`)
-    return { success: true, data }
-  } catch (error) {
-    console.error("❌ Failed to send account setup email:", error)
-    return { error: "Failed to send email" }
-  }
+  const html = await render(MemberInvitationEmail({ organizationName, houseName, inviterName, acceptLink }))
+  return sendEmail({ to: email, subject: `You're invited to join ${organizationName}`, html })
 }
 
-export async function sendWelcomeEmail(email: string, name: string) {
-  if (isDev && !forceSendEmails) {
-    console.log(`📧 WELCOME EMAIL (logged) - From: ${FROM_EMAIL}, To: ${email}, Name: ${name}`)
-    return { success: true, logged: true }
-  }
-
-  if (!process.env.RESEND_API_KEY) {
-    console.log("❌ RESEND_API_KEY not configured. Welcome email not sent.")
-    return { error: "No API key configured" }
-  }
-
-  try {
-    const html = await render(WelcomeEmail({ name }))
-    const { data, error } = await resend.emails.send({
-      from: FROM_EMAIL,
-      to: email,
-      subject: "Welcome to MembersHome!",
-      html: html,
-    })
-
-    if (error) {
-      console.error("❌ Resend error:", error)
-      return { error: error.message }
-    }
-
-    console.log(`✅ Welcome email sent to ${email}`)
-    return { success: true, data }
-  } catch (error) {
-    console.error("❌ Failed to send welcome email:", error)
-    return { error: "Failed to send welcome email" }
-  }
+export async function sendMembershipApprovedEmail(email: string, name: string, organizationName: string, houseName: string, portalLink: string) {
+  const html = await render(MembershipApprovedEmail({ name, organizationName, houseName, portalLink }))
+  return sendEmail({ to: email, subject: `Your membership to ${organizationName} has been approved!`, html })
 }
 
-export async function sendInvoiceEmail(
-  email: string,
-  invoiceNumber: string,
-  amount: number,
-  dueDate: Date,
-  invoiceUrl: string
-) {
-  if (isDev && !forceSendEmails) {
-    console.log(`📧 INVOICE EMAIL (logged) - To: ${email}, Invoice: ${invoiceNumber}, Amount: $${amount}`)
-    return { success: true, logged: true }
-  }
-
-  if (!process.env.RESEND_API_KEY) {
-    console.log("❌ RESEND_API_KEY not configured. Invoice email not sent.")
-    return { error: "No API key configured" }
-  }
-
-  try {
-    const html = await render(InvoiceEmail({ invoiceNumber, amount, dueDate, invoiceUrl }))
-    const { data, error } = await resend.emails.send({
-      from: FROM_EMAIL,
-      to: email,
-      subject: `Invoice ${invoiceNumber} from MembersHome`,
-      html: html,
-    })
-
-    if (error) {
-      console.error("❌ Resend error:", error)
-      return { error: error.message }
-    }
-
-    console.log(`✅ Invoice email sent to ${email}`)
-    return { success: true, data }
-  } catch (error) {
-    console.error("❌ Failed to send invoice email:", error)
-    return { error: "Failed to send invoice email" }
-  }
+export async function sendMembershipRejectedEmail(email: string, name: string, organizationName: string, contactLink: string, reason?: string) {
+  const html = await render(MembershipRejectedEmail({ name, organizationName, reason, contactLink }))
+  return sendEmail({ to: email, subject: `Update on your membership application to ${organizationName}`, html })
 }
 
-export async function sendResetPasswordEmail(email: string, resetToken: string) {
-  const resetUrl = `${process.env.NEXT_PUBLIC_APP_URL}/auth/reset-password?token=${resetToken}`
-
-  if (isDev && !forceSendEmails) {
-    console.log(`📧 RESET PASSWORD EMAIL (logged) - To: ${email}, Link: ${resetUrl}`)
-    return { success: true, logged: true }
-  }
-
-  if (!process.env.RESEND_API_KEY) {
-    console.log("❌ RESEND_API_KEY not configured. Reset password email not sent.")
-    return { error: "No API key configured" }
-  }
-
-  try {
-    const html = await render(ResetPasswordEmail({ resetUrl }))
-    const { data, error } = await resend.emails.send({
-      from: FROM_EMAIL,
-      to: email,
-      subject: "Reset your password",
-      html: html,
-    })
-
-    if (error) {
-      console.error("❌ Resend error:", error)
-      return { error: error.message }
-    }
-
-    console.log(`✅ Reset password email sent to ${email}`)
-    return { success: true, data }
-  } catch (error) {
-    console.error("❌ Failed to send reset password email:", error)
-    return { error: "Failed to send reset password email" }
-  }
+export async function sendEventReminderEmail(email: string, name: string, eventName: string, eventDate: string, eventTime: string, eventLocation: string, daysUntil: number, ticketLink?: string) {
+  const html = await render(EventReminderEmail({ name, eventName, eventDate, eventTime, eventLocation, daysUntil, ticketLink }))
+  return sendEmail({ to: email, subject: `Reminder: ${eventName} is ${daysUntil === 0 ? 'today' : `in ${daysUntil} days`}`, html })
 }
 
-export async function sendTicketPurchaseEmail(
-  email: string,
-  ticketName: string,
-  quantity: number,
-  totalAmount: number,
-  ticketCodes: string[],
-  eventName?: string,
-  eventDate?: Date,
-  ticketUrl?: string
-) {
-  if (isDev && !forceSendEmails) {
-    console.log(`📧 TICKET PURCHASE EMAIL (logged) - To: ${email}, Ticket: ${ticketName} x${quantity}, Total: $${totalAmount}`)
-    return { success: true, logged: true }
-  }
+export async function sendPaymentReceiptEmail(email: string, name: string, amount: number, currency: string, paymentDate: string, description: string, transactionId: string, receiptUrl: string) {
+  const html = await render(PaymentReceiptEmail({ name, amount, currency, paymentDate, description, transactionId, receiptUrl }))
+  return sendEmail({ to: email, subject: "Payment receipt from membersHome", html })
+}
 
-  if (!process.env.RESEND_API_KEY) {
-    console.log("❌ RESEND_API_KEY not configured. Ticket email not sent.")
-    return { error: "No API key configured" }
-  }
+export async function sendCancellationConfirmationEmail(email: string, name: string, organizationName: string, effectiveDate: string, reason: string, reactivateLink: string) {
+  const html = await render(CancellationConfirmationEmail({ name, organizationName, effectiveDate, reason, reactivateLink }))
+  return sendEmail({ to: email, subject: `Your membership to ${organizationName} has been cancelled`, html })
+}
 
-  try {
-    const html = await render(TicketPurchaseEmail({
-      ticketName,
-      quantity,
-      totalAmount,
-      ticketCodes,
-      eventName,
-      eventDate,
-      ticketUrl,
-    }))
-    const { data, error } = await resend.emails.send({
-      from: FROM_EMAIL,
-      to: email,
-      subject: `Your ticket${quantity > 1 ? "s" : ""} for ${ticketName}`,
-      html: html,
-    })
-
-    if (error) {
-      console.error("❌ Resend error:", error)
-      return { error: error.message }
-    }
-
-    console.log(`✅ Ticket purchase email sent to ${email}`)
-    return { success: true, data }
-  } catch (error) {
-    console.error("❌ Failed to send ticket purchase email:", error)
-    return { error: "Failed to send ticket purchase email" }
-  }
+export async function sendAnnouncementEmail(email: string, name: string, organizationName: string, title: string, message: string, ctaLink?: string, ctaText?: string) {
+  const html = await render(AnnouncementEmail({ name, organizationName, title, message, ctaLink, ctaText }))
+  return sendEmail({ to: email, subject: `Announcement from ${organizationName}: ${title}`, html })
 }

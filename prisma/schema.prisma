@@ -7,6 +7,40 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// ========================
+// PLATFORM LEVEL
+// ========================
+model Platform {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  name        String   @default("membersHome")
+  description String?
+  settings    Json     @default("{}")
+  
+  allowCustomDomains   Boolean   @default(true)
+  maxOrganizations     Int?
+  defaultPlanForNewOrgs PlanType @default(FREE)
+  
+  logoUrl     String?
+  faviconUrl  String?
+  primaryColor String?  @default("#3B82F6")
+  secondaryColor String? @default("#1E40AF")
+  
+  stripePlatformAccountId String? @unique
+  platformFeePercent      Float?  @default(0)
+  
+  enableMultiTenancy    Boolean @default(true)
+  enableMemberMessaging Boolean @default(true)
+  enableMemberDirectory Boolean @default(true)
+  
+  organizations Organization[]
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ========================
+// USER & AUTHENTICATION
+// ========================
 model User {
   id            String    @id @default(auto()) @map("_id") @db.ObjectId
   email         String    @unique
@@ -23,7 +57,6 @@ model User {
 
   platformRole PlatformRole @default(USER)
 
-  // Remove @unique from invitationToken
   invitationToken      String?
   invitationSentAt     DateTime?
   invitationAcceptedAt DateTime?
@@ -42,11 +75,18 @@ model User {
   createdInvoices       Invoice[]        @relation("InvoiceCreator")
   paidInvoices          Invoice[]        @relation("InvoicePayer")
 
-  // New relations for membership system
   reviewedApplications    MembershipApplication[] @relation("ApplicationReviewer")
   membershipItems         MembershipItem[]
   cancelledMemberships    MembershipItem[]        @relation("MembershipCanceller")
-  reviewedFormSubmissions FormSubmission[]        @relation("FormSubmissionReviewer") // Add this line
+  reviewedFormSubmissions FormSubmission[]        @relation("FormSubmissionReviewer")
+  customer                Customer?
+  memberProfile           MemberProfile?
+  memberDashboard         MemberDashboard?
+  memberActivities        MemberActivity[]
+  sentMemberMessages      MemberMessage[]         @relation("SentMemberMessages")
+  receivedMemberMessages  MemberMessage[]         @relation("ReceivedMemberMessages")
+  cancellationRequests    CancellationRequest[]
+  reviewedCancellations   CancellationRequest[]   @relation("CancellationReviewer")
 }
 
 enum PlatformRole {
@@ -68,6 +108,26 @@ model Session {
   @@index([userId])
 }
 
+// ========================
+// CUSTOMER & PAYMENTS
+// ========================
+model Customer {
+  id                    String   @id @default(auto()) @map("_id") @db.ObjectId
+  stripeCustomerId      String   @unique
+  userId                String   @unique @db.ObjectId
+  defaultPaymentMethodId String?
+  
+  user         User     @relation(fields: [userId], references: [id])
+  membershipItems MembershipItem[]
+  payments     Payment[]
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ========================
+// ORGANIZATION & TENANCY
+// ========================
 model Organization {
   id          String  @id @default(auto()) @map("_id") @db.ObjectId
   name        String
@@ -75,6 +135,9 @@ model Organization {
   description String?
   logoUrl     String?
   website     String?
+  
+  platformId  String? @db.ObjectId
+  platform    Platform? @relation(fields: [platformId], references: [id])
 
   plan         PlanType           @default(FREE)
   billingEmail String?
@@ -105,16 +168,18 @@ model Organization {
   rsvps           RSVP[]
   ticketPurchases TicketPurchase[]
 
-  // New relations for membership system
   membershipPlans        MembershipPlan[]
   membershipApplications MembershipApplication[]
   membershipItems        MembershipItem[]
-  customForms            CustomForm[] // Add this line
+  customForms            CustomForm[]
+  memberPortals          MemberPortal[]
+  memberMessages         MemberMessage[]
 
   @@index([status])
   @@index([customDomain])
   @@index([stripeCustomerId])
   @@index([stripeSubscriptionId])
+  @@index([platformId])
 }
 
 enum PlanType {
@@ -131,6 +196,9 @@ enum OrganizationStatus {
   TRIAL
 }
 
+// ========================
+// MEMBERSHIP & ROLES
+// ========================
 model Membership {
   id String @id @default(auto()) @map("_id") @db.ObjectId
 
@@ -162,6 +230,14 @@ model Membership {
   ticketValidations TicketValidation[] @relation("ValidatorMembership")
   rsvps             RSVP[]
 
+  memberProfile   MemberProfile?
+  memberDashboard MemberDashboard?
+  memberActivities MemberActivity[]
+  cancellationRequests CancellationRequest[]
+  
+  sentMemberMessages   MemberMessage[] @relation("SentMemberMessages")
+  receivedMemberMessages MemberMessage[] @relation("ReceivedMemberMessages")
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -185,6 +261,9 @@ enum MembershipStatus {
   BANNED
 }
 
+// ========================
+// HOUSE (SUB-UNIT/TEAM)
+// ========================
 model House {
   id String @id @default(auto()) @map("_id") @db.ObjectId
 
@@ -211,9 +290,12 @@ model House {
   updatedAt       DateTime         @updatedAt
   ticketPurchases TicketPurchase[]
 
-  // New relation for membership system
   membershipPlans MembershipPlan[]
-  customForms     CustomForm[] // Add this line
+  customForms     CustomForm[]
+  memberPortal    MemberPortal?
+  memberProfiles  MemberProfile[]
+  memberDashboards MemberDashboard[]
+  memberMessages  MemberMessage[]
 
   @@unique([organizationId, slug])
   @@index([organizationId])
@@ -251,6 +333,244 @@ enum HouseRole {
   HOUSE_ADMIN
 }
 
+// ========================
+// MEMBER PORTAL
+// ========================
+model MemberPortal {
+  id             String   @id @default(auto()) @map("_id") @db.ObjectId
+  houseId        String   @unique @db.ObjectId
+  organizationId String   @db.ObjectId
+  
+  theme       Json     @default("{}")
+  navigation  Json     @default("{}")
+  features    Json     @default("{}")
+  
+  requireMFAForPortal Boolean @default(false)
+  sessionTimeout     Int     @default(480)
+  allowedDomains     String[] @default([])
+  
+  welcomeMessage String?
+  customCSS      String?
+  customJS       String?
+  
+  metaTitle     String?
+  metaDescription String?
+  
+  house        House        @relation(fields: [houseId], references: [id])
+  organization Organization @relation(fields: [organizationId], references: [id])
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ========================
+// MEMBER PROFILE
+// ========================
+model MemberProfile {
+  id           String   @id @default(auto()) @map("_id") @db.ObjectId
+  membershipId String   @unique @db.ObjectId
+  userId       String   @unique @db.ObjectId
+  houseId      String   @db.ObjectId
+  
+  avatar       String?
+  bio          String?
+  phone        String?
+  address      Json?
+  emergencyContact Json?
+  
+  notificationPreferences Json @default("{}")
+  privacySettings        Json @default("{}")
+  language              String @default("en")
+  timezone              String @default("UTC")
+  
+  jobTitle     String?
+  company      String?
+  industry     String?
+  skills       String[] @default([])
+  interests    String[] @default([])
+  
+  socialLinks  Json @default("{}")
+  
+  membership   Membership @relation(fields: [membershipId], references: [id])
+  user         User       @relation(fields: [userId], references: [id])
+  house        House      @relation(fields: [houseId], references: [id])
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ========================
+// MEMBER DASHBOARD
+// ========================
+model MemberDashboard {
+  id           String   @id @default(auto()) @map("_id") @db.ObjectId
+  membershipId String   @unique @db.ObjectId
+  userId       String   @unique @db.ObjectId
+  houseId      String   @db.ObjectId
+  
+  widgetLayout Json @default("{}")
+  pinnedItems  String[] @default([])
+  
+  lastPortalLoginAt DateTime?
+  lastPortalLoginIp String?
+  portalLoginCount  Int @default(0)
+  
+  savedEvents        String[] @default([])
+  savedAnnouncements String[] @default([])
+  
+  defaultView      String @default("grid")
+  emailDigest      Boolean @default(true)
+  digestFrequency  String @default("weekly")
+  
+  membership   Membership @relation(fields: [membershipId], references: [id])
+  user         User       @relation(fields: [userId], references: [id])
+  house        House      @relation(fields: [houseId], references: [id])
+  
+  activities   MemberActivity[]
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model MemberActivity {
+  id           String   @id @default(auto()) @map("_id") @db.ObjectId
+  membershipId String   @db.ObjectId
+  dashboardId  String   @db.ObjectId
+  userId       String   @db.ObjectId
+  
+  activityType ActivityType
+  entityId     String
+  entityType   String
+  metadata     Json     @default("{}")
+  
+  performedAt  DateTime @default(now())
+  ipAddress    String?
+  userAgent    String?
+  
+  membership   Membership       @relation(fields: [membershipId], references: [id])
+  dashboard    MemberDashboard  @relation(fields: [dashboardId], references: [id])
+  user         User             @relation(fields: [userId], references: [id])
+  
+  @@index([membershipId, performedAt])
+  @@index([activityType])
+  @@index([userId])
+}
+
+enum ActivityType {
+  PAGE_VIEW
+  EVENT_RSVP
+  EVENT_CHECKIN
+  TICKET_PURCHASE
+  TICKET_DOWNLOAD
+  ANNOUNCEMENT_VIEW
+  PROFILE_UPDATE
+  PASSWORD_CHANGE
+  BILLING_UPDATE
+  SUBSCRIPTION_CHANGE
+  CANCELLATION_REQUEST
+  MESSAGE_SENT
+  MESSAGE_READ
+}
+
+// ========================
+// MEMBER MESSAGING
+// ========================
+model MemberMessage {
+  id           String   @id @default(auto()) @map("_id") @db.ObjectId
+  fromMembershipId String @db.ObjectId
+  toMembershipId   String @db.ObjectId
+  fromUserId       String @db.ObjectId
+  toUserId         String @db.ObjectId
+  houseId      String   @db.ObjectId
+  organizationId String @db.ObjectId
+  
+  subject      String
+  message      String
+  isRead       Boolean  @default(false)
+  readAt       DateTime?
+  parentMessageId String? @db.ObjectId
+  
+  status       MessageStatus @default(SENT)
+  
+  fromMembership Membership @relation("SentMemberMessages", fields: [fromMembershipId], references: [id])
+  toMembership   Membership @relation("ReceivedMemberMessages", fields: [toMembershipId], references: [id])
+  fromUser       User       @relation("SentMemberMessages", fields: [fromUserId], references: [id])
+  toUser         User       @relation("ReceivedMemberMessages", fields: [toUserId], references: [id])
+  house          House      @relation(fields: [houseId], references: [id])
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  parentMessage  MemberMessage? @relation("MessageThread", fields: [parentMessageId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  replies        MemberMessage[] @relation("MessageThread")
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@index([fromMembershipId, createdAt])
+  @@index([toMembershipId, isRead])
+  @@index([organizationId])
+  @@index([houseId])
+}
+
+enum MessageStatus {
+  SENT
+  DELIVERED
+  READ
+  DELETED
+}
+
+// ========================
+// CANCELLATION REQUESTS
+// ========================
+model CancellationRequest {
+  id           String   @id @default(auto()) @map("_id") @db.ObjectId
+  membershipId String   @db.ObjectId
+  membershipItemId String @db.ObjectId
+  userId       String   @db.ObjectId
+  
+  reason       CancellationReason
+  reasonDetail String?
+  effectiveDate DateTime
+  feedback     String?
+  
+  status       RequestStatus @default(PENDING)
+  reviewedBy   String?       @db.ObjectId
+  reviewedAt   DateTime?
+  approvedAt   DateTime?
+  deniedReason String?
+  
+  autoProcessAt DateTime?
+  processedAt   DateTime?
+  
+  membership     Membership     @relation(fields: [membershipId], references: [id])
+  membershipItem MembershipItem @relation(fields: [membershipItemId], references: [id])
+  user           User           @relation(fields: [userId], references: [id])
+  reviewer       User?          @relation("CancellationReviewer", fields: [reviewedBy], references: [id])
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@index([membershipId, status])
+  @@index([membershipItemId])
+}
+
+enum CancellationReason {
+  TOO_EXPENSIVE
+  NOT_USING
+  MOVING
+  HEALTH_REASONS
+  SERVICE_ISSUES
+  OTHER
+}
+
+enum RequestStatus {
+  PENDING
+  APPROVED
+  DENIED
+  PROCESSED
+}
+
+// ========================
+// EVENTS & RSVPS (continued)
+// ========================
 model Event {
   id String @id @default(auto()) @map("_id") @db.ObjectId
 
@@ -261,7 +581,7 @@ model Event {
   title       String
   slug        String
   description String?
-  imageUrl    String? // Add this field for event image
+  imageUrl    String?
 
   startDate DateTime
   endDate   DateTime
@@ -347,6 +667,9 @@ enum RSVPStatus {
   ATTENDED
 }
 
+// ========================
+// TICKETS & PURCHASES
+// ========================
 model Ticket {
   id String @id @default(auto()) @map("_id") @db.ObjectId
 
@@ -495,6 +818,9 @@ model TicketValidation {
   @@index([ticketCode])
 }
 
+// ========================
+// INVOICES & BILLING
+// ========================
 model Invoice {
   id String @id @default(auto()) @map("_id") @db.ObjectId
 
@@ -520,7 +846,6 @@ model Invoice {
   creator      User         @relation("InvoiceCreator", fields: [createdBy], references: [id])
   payer        User?        @relation("InvoicePayer", fields: [paidBy], references: [id])
 
-  // New relation for membership system
   membershipItemId String?         @db.ObjectId
   membershipItem   MembershipItem? @relation(fields: [membershipItemId], references: [id])
 
@@ -550,7 +875,6 @@ model Payment {
   ticketPurchaseId String? @db.ObjectId
 
   stripePaymentId  String
-  stripeCustomerId String?
   amount           Float
   currency         String  @default("USD")
   description      String?
@@ -565,9 +889,11 @@ model Payment {
   user           User            @relation(fields: [userId], references: [id])
   ticketPurchase TicketPurchase? @relation(fields: [ticketPurchaseId], references: [id])
 
-  // New relation for membership system
   membershipItemId String?         @db.ObjectId
   membershipItem   MembershipItem? @relation(fields: [membershipItemId], references: [id])
+  
+  customerId   String?   @db.ObjectId
+  customer     Customer? @relation(fields: [customerId], references: [id])
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -576,6 +902,7 @@ model Payment {
   @@index([userId])
   @@index([ticketPurchaseId])
   @@index([stripePaymentId])
+  @@index([customerId])
 }
 
 enum PaymentStatus {
@@ -586,6 +913,9 @@ enum PaymentStatus {
   DISPUTED
 }
 
+// ========================
+// COMMUNICATIONS
+// ========================
 model Communication {
   id String @id @default(auto()) @map("_id") @db.ObjectId
 
@@ -641,6 +971,9 @@ enum CommunicationStatus {
   FAILED
 }
 
+// ========================
+// REPORTS & ANALYTICS
+// ========================
 model Report {
   id String @id @default(auto()) @map("_id") @db.ObjectId
 
@@ -685,6 +1018,9 @@ enum ReportAccessLevel {
   PLATFORM
 }
 
+// ========================
+// AUDIT LOGS
+// ========================
 model AuditLog {
   id String @id @default(auto()) @map("_id") @db.ObjectId
 
@@ -716,8 +1052,9 @@ model AuditLog {
   @@index([entityType, entityId])
 }
 
-// ==================== NEW MODELS ====================
-
+// ========================
+// MEMBERSHIP PLANS & SUBSCRIPTIONS
+// ========================
 model MembershipPlan {
   id             String  @id @default(auto()) @map("_id") @db.ObjectId
   organizationId String  @db.ObjectId
@@ -728,17 +1065,8 @@ model MembershipPlan {
   type        MembershipPlanType   @default(STANDARD)
   status      MembershipPlanStatus @default(ACTIVE)
 
-  // Billing settings
-  billingFrequency BillingFrequency @default(MONTHLY)
-  amount           Float
-  currency         String           @default("USD")
-  vatRate          Float?           @default(0)
-  setupFee         Float?           @default(0)
-
-  // Features included
   features Json @default("[]")
 
-  // Visibility
   isPublic         Boolean @default(true)
   requiresApproval Boolean @default(false)
 
@@ -747,12 +1075,36 @@ model MembershipPlan {
 
   applications MembershipApplication[]
   memberships  MembershipItem[]
+  prices       PlanPrice[]
+  
+  stripeProductId String?
+  stripePriceIds  Json?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([organizationId, status])
   @@index([houseId])
+}
+
+model PlanPrice {
+  id               String         @id @default(auto()) @map("_id") @db.ObjectId
+  membershipPlanId String         @db.ObjectId
+  billingFrequency BillingFrequency
+  amount           Float
+  currency         String         @default("USD")
+  setupFee         Float?         @default(0)
+  vatRate          Float?         @default(0)
+  stripePriceId    String?
+  
+  membershipPlan   MembershipPlan @relation(fields: [membershipPlanId], references: [id])
+  membershipItems  MembershipItem[]
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([membershipPlanId, billingFrequency])
+  @@index([membershipPlanId])
 }
 
 enum MembershipPlanType {
@@ -775,12 +1127,14 @@ enum BillingFrequency {
   ANNUAL
 }
 
+// ========================
+// MEMBERSHIP APPLICATIONS
+// ========================
 model MembershipApplication {
   id               String @id @default(auto()) @map("_id") @db.ObjectId
   organizationId   String @db.ObjectId
   membershipPlanId String @db.ObjectId
 
-  // Applicant info
   firstName String
   lastName  String
   email     String
@@ -788,7 +1142,6 @@ model MembershipApplication {
   company   String?
   position  String?
 
-  // Application details
   status          ApplicationStatus @default(PENDING)
   notes           String?
   reviewedBy      String?           @db.ObjectId
@@ -797,7 +1150,6 @@ model MembershipApplication {
   rejectedAt      DateTime?
   rejectionReason String?
 
-  // Documents
   documents Json @default("[]")
   metadata  Json @default("{}")
 
@@ -805,20 +1157,21 @@ model MembershipApplication {
   membershipPlan MembershipPlan @relation(fields: [membershipPlanId], references: [id])
   reviewer       User?          @relation("ApplicationReviewer", fields: [reviewedBy], references: [id])
 
-  // After approval, this creates a membership
   membership MembershipItem?
 
-  // NEW FIELDS for enhanced workflow
-  reviewToken          String?   // Token for plan selection page (remove @unique for MongoDB)
-  reviewTokenSentAt    DateTime? // When the review email was sent
-  selectedPlanId       String?   @db.ObjectId // Plan selected by applicant during review
-  membershipNumber     String?   // Member number assigned on approval (remove @unique for MongoDB)
-  initiationFee        Float?    // Fee amount (can be waived)
+  reviewToken          String?
+  reviewTokenSentAt    DateTime?
+  selectedPlanId       String?   @db.ObjectId
+  selectedFrequency    BillingFrequency?
+  selectedPriceId      String?   @db.ObjectId
+  selectedAmount       Float?
+  membershipNumber     String?
+  initiationFee        Float?
   isInitiationWaived   Boolean   @default(false)
-  proratedAmount       Float?    // Prorated amount for partial period
-  finalAmount          Float?    // Final amount after adjustments
-    stripePaymentMethodId String?  // Add this field
-
+  proratedAmount       Float?
+  finalAmount          Float?
+  stripePaymentMethodId String?
+  stripePaymentIntentId String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -839,34 +1192,37 @@ enum ApplicationStatus {
   CANCELLED
 }
 
+// ========================
+// MEMBERSHIP ITEMS (ACTIVE SUBSCRIPTIONS)
+// ========================
 model MembershipItem {
   id               String  @id @default(auto()) @map("_id") @db.ObjectId
   organizationId   String  @db.ObjectId
   membershipPlanId String  @db.ObjectId
+  planPriceId      String? @db.ObjectId
   userId           String  @db.ObjectId
   applicationId    String? @unique @db.ObjectId
 
-  // Membership details
   status    MembershipItemStatus @default(ACTIVE)
   startDate DateTime             @default(now())
   endDate   DateTime?
   cancelAt  DateTime?
 
-  // Billing details
   billingFrequency BillingFrequency
   amount           Float
   currency         String           @default("USD")
   vatRate          Float?           @default(0)
+  setupFee         Float?           @default(0)
 
-  // Payment details
-  stripeCustomerId     String?
-  stripeSubscriptionId String?
-  paymentStatus        PaymentStatus @default(PENDING)
-  nextBillingDate      DateTime?
-  lastBilledAt         DateTime?
-  failedPaymentCount   Int           @default(0)
+  customerId            String?   @db.ObjectId
+  customer              Customer? @relation(fields: [customerId], references: [id])
+  stripeSubscriptionId  String?
+  paymentStatus         PaymentStatus @default(PENDING)
+  nextBillingDate       DateTime?
+  lastBilledAt          DateTime?
+  failedPaymentCount    Int       @default(0)
+  stripePaymentIntentId String?
 
-  // Cancellation details
   cancellationReason String?
   cancelledBy        String?   @db.ObjectId
   cancelledAt        DateTime?
@@ -875,17 +1231,19 @@ model MembershipItem {
 
   organization    Organization           @relation(fields: [organizationId], references: [id])
   membershipPlan  MembershipPlan         @relation(fields: [membershipPlanId], references: [id])
+  planPrice       PlanPrice?             @relation(fields: [planPriceId], references: [id])
   user            User                   @relation(fields: [userId], references: [id])
   application     MembershipApplication? @relation(fields: [applicationId], references: [id])
   cancelledByUser User?                  @relation("MembershipCanceller", fields: [cancelledBy], references: [id])
 
   invoices Invoice[]
   payments Payment[]
+  
+  cancellationRequests CancellationRequest[]
 
-  // NEW FIELDS
-  initiationFeePaid   Float?   // Actual initiation fee paid
-  proratedAdjustment  Float?   // Prorated adjustment amount
-  membershipNumber    String?  // Member number (also stored here for easy access)
+  initiationFeePaid   Float?
+  proratedAdjustment  Float?
+  membershipNumber    String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -893,7 +1251,8 @@ model MembershipItem {
   @@index([organizationId, status])
   @@index([userId])
   @@index([membershipPlanId])
-  @@index([stripeCustomerId])
+  @@index([customerId])
+  @@index([membershipNumber])
 }
 
 enum MembershipItemStatus {
@@ -904,6 +1263,9 @@ enum MembershipItemStatus {
   EXPIRED
 }
 
+// ========================
+// CUSTOM FORMS
+// ========================
 model CustomForm {
   id             String     @id @default(auto()) @map("_id") @db.ObjectId
   organizationId String     @db.ObjectId
