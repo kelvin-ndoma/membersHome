@@ -12,7 +12,7 @@ export default function LoginPage() {
   const callbackUrl = searchParams.get("callbackUrl") || "/dashboard"
   const error = searchParams.get("error")
   const verified = searchParams.get("verified")
-  const inviteAccepted = searchParams.get("invite_accepted")
+  const accountReady = searchParams.get("account_ready")
   
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
@@ -23,21 +23,39 @@ export default function LoginPage() {
 
   // Redirect if already logged in
   useEffect(() => {
+    console.log("Session status:", sessionStatus)
+    console.log("Session data:", session)
+    
     if (sessionStatus === "authenticated" && session?.user) {
+      console.log("User platformRole:", session.user.platformRole)
+      console.log("User memberships:", session.user.memberships)
+      
       // Check platform role first
       if (session.user.platformRole === "PLATFORM_ADMIN") {
+        console.log("Redirecting to platform dashboard")
         router.push("/platform/dashboard")
         return
       }
       
-      // Check if user is an org owner
-      const isOrgOwner = session.user.memberships?.some(
+      // Check if user has any memberships
+      if (!session.user.memberships || session.user.memberships.length === 0) {
+        console.log("No memberships found, redirecting to placeholder")
+        router.push("/dashboard/placeholder")
+        return
+      }
+      
+      // Find ORG_OWNER membership
+      const orgOwnerMembership = session.user.memberships.find(
         (m: any) => m.organizationRole === "ORG_OWNER" && m.status === "ACTIVE"
       )
       
-      if (isOrgOwner) {
-        router.push("/org/dashboard")
+      console.log("Org owner membership:", orgOwnerMembership)
+      
+      if (orgOwnerMembership && orgOwnerMembership.organization?.slug) {
+        console.log("Redirecting to org dashboard:", `/org/${orgOwnerMembership.organization.slug}/dashboard`)
+        router.push(`/org/${orgOwnerMembership.organization.slug}/dashboard`)
       } else {
+        console.log("No active org owner membership found, redirecting to placeholder")
         router.push("/dashboard/placeholder")
       }
     }
@@ -47,7 +65,7 @@ export default function LoginPage() {
     if (verified === "true") {
       setSuccessMessage("Email verified successfully! You can now log in.")
     }
-    if (inviteAccepted === "true") {
+    if (accountReady === "true") {
       setSuccessMessage("Account setup complete! Please log in with your new password.")
     }
     
@@ -56,7 +74,7 @@ export default function LoginPage() {
     } else if (error === "CredentialsSignin") {
       setErrorMessage("Invalid email or password.")
     }
-  }, [error, verified, inviteAccepted])
+  }, [error, verified, accountReady])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()

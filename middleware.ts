@@ -6,9 +6,12 @@ export default withAuth(
     const token = req.nextauth.token
     const path = req.nextUrl.pathname
 
-    // ========================
-    // PLATFORM ADMIN ROUTES
-    // ========================
+    // Allow signout page without auth
+    if (path === "/signout") {
+      return NextResponse.next()
+    }
+
+    // Platform admin routes
     if (path.startsWith("/platform")) {
       if (!token || token.platformRole !== "PLATFORM_ADMIN") {
         const url = new URL("/unauthorized", req.url)
@@ -17,9 +20,7 @@ export default withAuth(
       }
     }
 
-    // ========================
-    // ORGANIZATION ADMIN ROUTES
-    // ========================
+    // Organization routes
     if (path.startsWith("/org/")) {
       if (!token) {
         const url = new URL("/login", req.url)
@@ -34,9 +35,7 @@ export default withAuth(
       }
     }
 
-    // ========================
-    // HOUSE ROUTES (Portal & Admin)
-    // ========================
+    // House routes (Portal & Admin)
     if (path.match(/\/house\/[^/]+\/[^/]+\/(portal|admin)/)) {
       if (!token) {
         const url = new URL("/login", req.url)
@@ -44,12 +43,10 @@ export default withAuth(
         return NextResponse.redirect(url)
       }
       
-      // Extract orgSlug and houseSlug from path
       const parts = path.split("/")
       const orgSlug = parts[2]
       const houseSlug = parts[3]
       
-      // Check if user has access to this house
       const hasAccess = token.memberships?.some(membership => 
         membership.organization.slug === orgSlug &&
         membership.houseMemberships?.some(hm => hm.house.slug === houseSlug)
@@ -61,7 +58,6 @@ export default withAuth(
         return NextResponse.redirect(url)
       }
       
-      // House admin routes require HOUSE_ADMIN or HOUSE_MANAGER role
       if (path.includes("/admin/")) {
         const isHouseAdmin = token.memberships?.some(membership =>
           membership.organization.slug === orgSlug &&
@@ -79,17 +75,13 @@ export default withAuth(
       }
     }
 
-    // ========================
-    // AUTH PAGES - Redirect if already logged in
-    // ========================
+    // Auth pages - Redirect if already logged in
     const authPages = ["/login", "/register", "/forgot-password", "/reset-password", "/verify-email"]
     if (authPages.includes(path) && token) {
       return NextResponse.redirect(new URL("/dashboard", req.url))
     }
 
-    // ========================
-    // API ROUTE PROTECTION
-    // ========================
+    // API route protection
     if (path.startsWith("/api/") && !path.startsWith("/api/auth") && !path.startsWith("/api/webhooks")) {
       if (!token) {
         return new NextResponse(
@@ -114,24 +106,21 @@ export default withAuth(
           "/forgot-password",
           "/reset-password",
           "/verify-email",
-          "/signout",  
+          "/signout",
           "/api/auth",
           "/api/webhooks"
         ]
         
-        // Check if path matches any public route
         const isPublicPath = publicPaths.some(publicPath => 
           path === publicPath || path.startsWith(publicPath + "/")
         )
         
-        // Static files and assets
         const isStaticFile = path.match(/\.(svg|png|jpg|jpeg|gif|webp|css|js)$/)
         
         if (isPublicPath || isStaticFile) {
           return true
         }
         
-        // All other routes require authentication
         return !!token
       },
     },

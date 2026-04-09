@@ -13,6 +13,8 @@ export default function AcceptInvitePage() {
 
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
+  const [success, setSuccess] = useState(false)
+  const [redirectOrgSlug, setRedirectOrgSlug] = useState("")
   const [formData, setFormData] = useState({
     name: "",
     password: "",
@@ -66,8 +68,13 @@ export default function AcceptInvitePage() {
         throw new Error(data.error || "Failed to set up account")
       }
 
-      // Redirect to login with success message
-      router.push("/login?invite_accepted=true")
+      setSuccess(true)
+      setRedirectOrgSlug(data.redirectTo || "/login")
+      
+      // Redirect to login after 3 seconds
+      setTimeout(() => {
+        router.push("/login?account_ready=true")
+      }, 3000)
     } catch (error: any) {
       setError(error.message)
     } finally {
@@ -94,6 +101,28 @@ export default function AcceptInvitePage() {
     )
   }
 
+  if (success) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="max-w-md w-full bg-white rounded-lg shadow p-8 text-center">
+          <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <svg className="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+            </svg>
+          </div>
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">Account Created Successfully!</h2>
+          <p className="text-gray-600 mb-4">
+            Your account has been set up. You can now log in as an Organization Owner.
+          </p>
+          <p className="text-sm text-gray-500">Redirecting to login page...</p>
+          <Link href="/login" className="mt-4 inline-block text-blue-600 hover:text-blue-500">
+            Click here if not redirected
+          </Link>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-md w-full space-y-8">
@@ -101,7 +130,7 @@ export default function AcceptInvitePage() {
           <h1 className="text-3xl font-bold text-blue-600">membersHome</h1>
           <h2 className="mt-6 text-2xl font-bold text-gray-900">Complete Your Account Setup</h2>
           <p className="mt-2 text-sm text-gray-600">
-            You've been invited to join as an organization owner.
+            You've been invited as an Organization Owner.
             Please set up your account to continue.
           </p>
           <p className="mt-1 text-sm text-gray-500">

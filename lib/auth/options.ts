@@ -49,10 +49,12 @@ export const authOptions: NextAuthOptions = {
           throw new Error("Please verify your email address. A new verification link has been sent.")
         }
 
+        // Transform memberships to include organization slug
         const transformedMemberships = user.memberships.map(membership => ({
           id: membership.id,
           organizationId: membership.organizationId,
           organizationRole: membership.organizationRole,
+          status: membership.status,
           organization: {
             id: membership.organization.id,
             name: membership.organization.name,
@@ -61,6 +63,7 @@ export const authOptions: NextAuthOptions = {
           houseMemberships: membership.houseMemberships.map(hm => ({
             houseId: hm.houseId,
             role: hm.role,
+            status: hm.status,
             house: {
               id: hm.house.id,
               name: hm.house.name,
@@ -68,6 +71,9 @@ export const authOptions: NextAuthOptions = {
             }
           }))
         }))
+
+        console.log(`User ${user.email} logging in with role: ${user.platformRole}`)
+        console.log("Memberships:", JSON.stringify(transformedMemberships, null, 2))
 
         return {
           id: user.id,
@@ -88,6 +94,8 @@ export const authOptions: NextAuthOptions = {
         token.name = user.name
         token.platformRole = user.platformRole
         token.memberships = user.memberships
+        console.log(`JWT token set with role: ${user.platformRole}`)
+        console.log("JWT memberships:", JSON.stringify(user.memberships, null, 2))
       }
       return token
     },
@@ -98,6 +106,8 @@ export const authOptions: NextAuthOptions = {
         session.user.name = token.name as string
         session.user.platformRole = token.platformRole as string
         session.user.memberships = token.memberships as any[]
+        console.log(`Session set with role: ${token.platformRole}`)
+        console.log("Session memberships:", JSON.stringify(session.user.memberships, null, 2))
       }
       return session
     }

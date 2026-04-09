@@ -22,9 +22,18 @@ export default function SignoutButton({ variant = "default", className = "" }: S
         method: "POST",
       })
       
-      // Sign out from NextAuth and redirect to signout page
-      await signOut({ redirect: false })
-      router.push("/signout")
+      // Clear all cookies by calling signOut with redirect false
+      await signOut({ 
+        redirect: false,
+        callbackUrl: "/"
+      })
+      
+      // Clear any client-side storage
+      localStorage.clear()
+      sessionStorage.clear()
+      
+      // Hard redirect to signout page (this will clear server-side session too)
+      window.location.href = "/signout"
     } catch (error) {
       console.error("Signout error:", error)
       // Fallback signout

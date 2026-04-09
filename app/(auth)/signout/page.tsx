@@ -8,31 +8,41 @@ import Link from "next/link"
 export default function SignoutPage() {
   const router = useRouter()
   const [countdown, setCountdown] = useState(5)
-  const [isSigningOut, setIsSigningOut] = useState(false)
+  const [isSigningOut, setIsSigningOut] = useState(true)
 
   useEffect(() => {
     const performSignout = async () => {
       setIsSigningOut(true)
       
-      // Call our API to log the signout
-      await fetch("/api/auth/signout", {
-        method: "POST",
-      })
-      
-      // Sign out from NextAuth
-      await signOut({ redirect: false })
-      
-      // Start countdown
-      const interval = setInterval(() => {
-        setCountdown((prev) => {
-          if (prev <= 1) {
-            clearInterval(interval)
-            router.push("/")
-            return 0
-          }
-          return prev - 1
+      try {
+        // Call our API to log the signout and clear cookies
+        await fetch("/api/auth/signout", {
+          method: "POST",
         })
-      }, 1000)
+        
+        // Sign out from NextAuth with redirect false
+        await signOut({ redirect: false })
+        
+        // Clear client-side storage
+        localStorage.clear()
+        sessionStorage.clear()
+        
+        // Start countdown
+        const interval = setInterval(() => {
+          setCountdown((prev) => {
+            if (prev <= 1) {
+              clearInterval(interval)
+              router.push("/")
+              return 0
+            }
+            return prev - 1
+          })
+        }, 1000)
+      } catch (error) {
+        console.error("Signout error:", error)
+        // Force redirect to home
+        router.push("/")
+      }
     }
 
     performSignout()
@@ -41,7 +51,6 @@ export default function SignoutPage() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-md w-full space-y-8 text-center">
-        {/* Header */}
         <div>
           <h1 className="text-3xl font-bold text-blue-600">membersHome</h1>
           <h2 className="mt-6 text-2xl font-bold text-gray-900">Signed Out</h2>
@@ -50,7 +59,6 @@ export default function SignoutPage() {
           </p>
         </div>
 
-        {/* Icon */}
         <div className="flex justify-center">
           <div className="rounded-full bg-green-100 p-3">
             <svg className="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -59,7 +67,6 @@ export default function SignoutPage() {
           </div>
         </div>
 
-        {/* Countdown */}
         <div className="space-y-4">
           <p className="text-sm text-gray-500">
             Redirecting to homepage in {countdown} seconds...

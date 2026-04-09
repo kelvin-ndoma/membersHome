@@ -27,7 +27,7 @@ export async function POST(req: NextRequest) {
         email,
         invitationToken: token,
         invitationSentAt: {
-          gt: new Date(), // Not expired
+          gt: new Date(),
         }
       }
     })
@@ -36,6 +36,18 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         { error: "Invalid or expired invitation link" },
         { status: 400 }
+      )
+    }
+
+    // Get the organization to verify it exists
+    const organization = await prisma.organization.findUnique({
+      where: { id: orgId }
+    })
+
+    if (!organization) {
+      return NextResponse.json(
+        { error: "Organization not found" },
+        { status: 404 }
       )
     }
 
@@ -50,10 +62,11 @@ export async function POST(req: NextRequest) {
         passwordHash: hashedPassword,
         invitationToken: null,
         invitationSentAt: null,
+        emailVerified: new Date(), // Auto-verify since they came from invite
       }
     })
 
-    // Update membership status from PENDING to ACTIVE
+    // Update membership status from PENDING to ACTIVE and ensure role is ORG_OWNER
     await prisma.membership.updateMany({
       where: {
         userId: user.id,
@@ -62,16 +75,38 @@ export async function POST(req: NextRequest) {
       data: {
         status: "ACTIVE",
         acceptedAt: new Date(),
+        organizationRole: "ORG_OWNER", // Ensure they are ORG_OWNER
       }
     })
 
-    // Send verification email
-    const verificationLink = `${process.env.NEXTAUTH_URL}/verify-email?token=${updatedUser.id}`
-    await sendVerificationEmail(email, verificationLink, name)
+    // Get the membership to find houses
+    const membership = await prisma.membership.findFirst({
+      where: {
+        userId: user.id,
+        organizationId: orgId,
+      }
+    })
+
+    // Update house memberships
+    if (membership) {
+      await prisma.houseMembership.updateMany({
+        where: {
+          membershipId: membership.id,
+        },
+        data: {
+          status: "ACTIVE",
+        }
+      })
+    }
+
+    // No need to send verification email since we auto-verified
+    // But we'll send a welcome email instead
+    // await sendWelcomeEmail(email, name, organization.name)
 
     return NextResponse.json({
       success: true,
-      message: "Account setup complete. Please verify your email to login."
+      message: "Account setup complete. You can now log in.",
+      redirectTo: `/org/${organization.slug}/dashboard`
     })
   } catch (error) {
     console.error("Accept invite error:", error)
