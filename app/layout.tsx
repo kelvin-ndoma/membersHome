@@ -1,13 +1,14 @@
-import type { Metadata } from "next"
-import { Inter } from "next/font/google"
-import { Providers } from "./providers"
-import "./globals.css"
+// app/layout.tsx
+import './globals.css'
+import { Inter } from 'next/font/google'
+import { Toaster } from 'react-hot-toast'
+import { Providers } from './providers'
 
-const inter = Inter({ subsets: ["latin"] })
+const inter = Inter({ subsets: ['latin'] })
 
-export const metadata: Metadata = {
-  title: "membersHome - Complete Membership Platform",
-  description: "The complete membership platform for organizations and clubs",
+export const metadata = {
+  title: 'MembersHome - Membership Management Platform',
+  description: 'Complete membership management for organizations',
 }
 
 export default function RootLayout({
@@ -20,6 +21,7 @@ export default function RootLayout({
       <body className={inter.className}>
         <Providers>
           {children}
+          <Toaster position="top-right" />
         </Providers>
       </body>
     </html>

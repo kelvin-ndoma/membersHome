@@ -1,8 +1,9 @@
-import { NextRequest, NextResponse } from "next/server"
-import { getServerSession } from "next-auth"
-import { authOptions } from "@/lib/auth/options"
-import { prisma } from "@/prisma/client"
-import { sendAnnouncementEmail } from "@/lib/email"
+// app/api/org/[orgSlug]/houses/[houseSlug]/communications/route.ts
+import { NextRequest, NextResponse } from 'next/server'
+import { getServerSession } from 'next-auth'
+import { authOptions } from '@/lib/auth/auth.config'
+import { prisma } from '@/lib/prisma'
+import { sendEmail } from '@/lib/email/send'
 
 export async function GET(
   req: NextRequest,
@@ -10,58 +11,69 @@ export async function GET(
 ) {
   try {
     const session = await getServerSession(authOptions)
-    
-    if (!session?.user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+
+    if (!session) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const { orgSlug, houseSlug } = params
-
-    const organization = await prisma.organization.findUnique({
-      where: { slug: orgSlug }
-    })
-
-    if (!organization) {
-      return NextResponse.json({ error: "Organization not found" }, { status: 404 })
-    }
-
-    const membership = await prisma.membership.findFirst({
-      where: {
-        userId: session.user.id,
-        organizationId: organization.id,
-        organizationRole: "ORG_OWNER",
-        status: "ACTIVE"
-      }
-    })
-
-    if (!membership) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
+    const searchParams = req.nextUrl.searchParams
+    const page = parseInt(searchParams.get('page') || '1')
+    const limit = parseInt(searchParams.get('limit') || '10')
+    const type = searchParams.get('type')
+    const status = searchParams.get('status')
 
     const house = await prisma.house.findFirst({
       where: {
-        slug: houseSlug,
-        organizationId: organization.id
-      }
+        slug: params.houseSlug,
+        organization: { slug: params.orgSlug }
+      },
+      select: { id: true, organizationId: true }
     })
 
     if (!house) {
-      return NextResponse.json({ error: "House not found" }, { status: 404 })
+      return NextResponse.json(
+        { error: 'House not found' },
+        { status: 404 }
+      )
     }
 
-    const communications = await prisma.communication.findMany({
-      where: { 
-        organizationId: organization.id,
-        houseId: house.id
-      },
-      orderBy: { createdAt: "desc" }
-    })
+    const where: any = {
+      OR: [
+        { houseId: house.id },
+        { organizationId: house.organizationId, houseId: null }
+      ]
+    }
+    if (type) where.type = type
+    if (status) where.status = status
 
-    return NextResponse.json(communications)
+    const [communications, total] = await Promise.all([
+      prisma.communication.findMany({
+        where,
+        skip: (page - 1) * limit,
+        take: limit,
+        orderBy: { createdAt: 'desc' },
+        include: {
+          creator: {
+            select: { id: true, name: true, email: true }
+          }
+        }
+      }),
+      prisma.communication.count({ where })
+    ])
+
+    return NextResponse.json({
+      communications,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit)
+      }
+    })
   } catch (error) {
-    console.error("Failed to fetch communications:", error)
+    console.error('Get communications error:', error)
     return NextResponse.json(
-      { error: "Failed to fetch communications" },
+      { error: 'Internal server error' },
       { status: 500 }
     )
   }
@@ -73,102 +85,92 @@ export async function POST(
 ) {
   try {
     const session = await getServerSession(authOptions)
-    
-    if (!session?.user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
 
-    const { orgSlug, houseSlug } = params
-    const { subject, body } = await req.json()
-
-    if (!subject || !body) {
-      return NextResponse.json(
-        { error: "Subject and body are required" },
-        { status: 400 }
-      )
-    }
-
-    const organization = await prisma.organization.findUnique({
-      where: { slug: orgSlug }
-    })
-
-    if (!organization) {
-      return NextResponse.json({ error: "Organization not found" }, { status: 404 })
-    }
-
-    const membership = await prisma.membership.findFirst({
-      where: {
-        userId: session.user.id,
-        organizationId: organization.id,
-        organizationRole: "ORG_OWNER",
-        status: "ACTIVE"
-      }
-    })
-
-    if (!membership) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    if (!session) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
     const house = await prisma.house.findFirst({
       where: {
-        slug: houseSlug,
-        organizationId: organization.id
-      }
-    })
-
-    if (!house) {
-      return NextResponse.json({ error: "House not found" }, { status: 404 })
-    }
-
-    // Get all house members
-    const houseMembers = await prisma.houseMembership.findMany({
-      where: { 
-        houseId: house.id,
-        status: "ACTIVE"
+        slug: params.houseSlug,
+        organization: { slug: params.orgSlug }
       },
       include: {
-        membership: {
-          include: {
-            user: true
+        members: {
+          where: {
+            membership: { userId: session.user.id },
+            role: { in: ['HOUSE_MANAGER', 'HOUSE_ADMIN', 'HOUSE_STAFF'] }
           }
         }
       }
     })
 
-    // Send emails to all members
-    let sentCount = 0
-    for (const hm of houseMembers) {
-      await sendAnnouncementEmail(
-        hm.membership.user.email,
-        hm.membership.user.name || "Member",
-        organization.name,
-        subject,
-        body
+    if (!house) {
+      return NextResponse.json(
+        { error: 'House not found' },
+        { status: 404 }
       )
-      sentCount++
     }
 
-    // Create communication record
+    if (house.members.length === 0) {
+      return NextResponse.json(
+        { error: 'Unauthorized - Staff access required' },
+        { status: 403 }
+      )
+    }
+
+    const {
+      subject,
+      body,
+      type,
+      recipientType,
+      segmentFilters,
+      scheduledFor,
+    } = await req.json()
+
+    if (!subject || !body) {
+      return NextResponse.json(
+        { error: 'Subject and body are required' },
+        { status: 400 }
+      )
+    }
+
     const communication = await prisma.communication.create({
       data: {
         subject,
         body,
-        type: "ANNOUNCEMENT",
-        recipientType: "HOUSE_MEMBERS",
-        organizationId: organization.id,
+        type: type || 'EMAIL',
+        recipientType: recipientType || 'ALL_MEMBERS',
+        segmentFilters: segmentFilters || {},
+        status: scheduledFor ? 'SCHEDULED' : 'DRAFT',
+        scheduledFor: scheduledFor ? new Date(scheduledFor) : null,
+        organizationId: house.organizationId,
         houseId: house.id,
         createdBy: session.user.id,
-        status: "SENT",
-        sentAt: new Date(),
-        sentCount,
       }
     })
 
-    return NextResponse.json(communication, { status: 201 })
+    await prisma.auditLog.create({
+      data: {
+        userId: session.user.id,
+        userEmail: session.user.email,
+        action: 'COMMUNICATION_CREATED',
+        entityType: 'COMMUNICATION',
+        entityId: communication.id,
+        organizationId: house.organizationId,
+        houseId: house.id,
+        metadata: { subject, type, recipientType }
+      }
+    })
+
+    return NextResponse.json({
+      success: true,
+      communication
+    }, { status: 201 })
   } catch (error) {
-    console.error("Failed to send announcement:", error)
+    console.error('Create communication error:', error)
     return NextResponse.json(
-      { error: "Failed to send announcement" },
+      { error: 'Internal server error' },
       { status: 500 }
     )
   }

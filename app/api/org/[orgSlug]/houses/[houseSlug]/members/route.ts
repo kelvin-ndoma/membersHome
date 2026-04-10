@@ -1,7 +1,8 @@
-import { NextRequest, NextResponse } from "next/server"
-import { getServerSession } from "next-auth"
-import { authOptions } from "@/lib/auth/options"
-import { prisma } from "@/prisma/client"
+// app/api/org/[orgSlug]/houses/[houseSlug]/members/route.ts
+import { NextRequest, NextResponse } from 'next/server'
+import { getServerSession } from 'next-auth'
+import { authOptions } from '@/lib/auth/auth.config'
+import { prisma } from '@/lib/prisma'
 
 export async function GET(
   req: NextRequest,
@@ -9,77 +10,86 @@ export async function GET(
 ) {
   try {
     const session = await getServerSession(authOptions)
-    
-    if (!session?.user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+
+    if (!session) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const { orgSlug, houseSlug } = params
-
-    const organization = await prisma.organization.findUnique({
-      where: { slug: orgSlug }
-    })
-
-    if (!organization) {
-      return NextResponse.json({ error: "Organization not found" }, { status: 404 })
-    }
-
-    const membership = await prisma.membership.findFirst({
-      where: {
-        userId: session.user.id,
-        organizationId: organization.id,
-        organizationRole: "ORG_OWNER",
-        status: "ACTIVE"
-      }
-    })
-
-    if (!membership) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
+    const searchParams = req.nextUrl.searchParams
+    const page = parseInt(searchParams.get('page') || '1')
+    const limit = parseInt(searchParams.get('limit') || '20')
+    const role = searchParams.get('role')
+    const status = searchParams.get('status')
+    const search = searchParams.get('search')
 
     const house = await prisma.house.findFirst({
       where: {
-        slug: houseSlug,
-        organizationId: organization.id
-      }
+        slug: params.houseSlug,
+        organization: { slug: params.orgSlug }
+      },
+      select: { id: true }
     })
 
     if (!house) {
-      return NextResponse.json({ error: "House not found" }, { status: 404 })
+      return NextResponse.json(
+        { error: 'House not found' },
+        { status: 404 }
+      )
     }
 
-    const houseMembers = await prisma.houseMembership.findMany({
-      where: { houseId: house.id },
-      include: {
-        membership: {
-          include: {
-            user: {
-              select: {
-                id: true,
-                name: true,
-                email: true,
-                image: true,
+    const where: any = { houseId: house.id }
+    if (role) where.role = role
+    if (status) where.status = status
+    if (search) {
+      where.OR = [
+        { membership: { user: { name: { contains: search, mode: 'insensitive' } } } },
+        { membership: { user: { email: { contains: search, mode: 'insensitive' } } } },
+      ]
+    }
+
+    const [members, total] = await Promise.all([
+      prisma.houseMembership.findMany({
+        where,
+        skip: (page - 1) * limit,
+        take: limit,
+        orderBy: { joinedAt: 'desc' },
+        include: {
+          membership: {
+            include: {
+              user: {
+                select: {
+                  id: true,
+                  name: true,
+                  email: true,
+                  image: true,
+                }
               }
+            }
+          },
+          memberProfile: {
+            select: {
+              jobTitle: true,
+              company: true,
             }
           }
         }
-      },
-      orderBy: { joinedAt: "desc" }
+      }),
+      prisma.houseMembership.count({ where })
+    ])
+
+    return NextResponse.json({
+      members,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit)
+      }
     })
-
-    const members = houseMembers.map(hm => ({
-      id: hm.id,
-      user: hm.membership.user,
-      role: hm.role,
-      status: hm.status,
-      joinedAt: hm.joinedAt
-    }))
-
-    return NextResponse.json(members)
   } catch (error) {
-    console.error("Failed to fetch house members:", error)
+    console.error('Get members error:', error)
     return NextResponse.json(
-      { error: "Failed to fetch members" },
+      { error: 'Internal server error' },
       { status: 500 }
     )
   }

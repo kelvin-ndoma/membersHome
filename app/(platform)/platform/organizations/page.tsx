@@ -1,251 +1,224 @@
-"use client";
+// app/(platform)/platform/organizations/page.tsx
+import Link from 'next/link'
+import { prisma } from '@/lib/prisma'
+import { Building2, Plus, MoreVertical, Users, Calendar, Home } from 'lucide-react'
 
-import { useEffect, useState } from "react";
-import Link from "next/link";
-import { useSearchParams } from "next/navigation";
-import { format } from "date-fns";
-import { Toast, useToast } from "@/components/ui/toast";
-
-interface Organization {
-  id: string;
-  name: string;
-  slug: string;
-  plan: string;
-  status: string;
-  createdAt: string;
-  _count: {
-    memberships: number;
-    houses: number;
-  };
-}
-
-export default function OrganizationsPage() {
-  const searchParams = useSearchParams();
-  const { toast, showToast, hideToast } = useToast();
-  const [organizations, setOrganizations] = useState<Organization[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState("");
-  const [filter, setFilter] = useState("all");
-
-  // Check for success message from URL params (after redirect from create)
-  useEffect(() => {
-    const created = searchParams.get("created");
-    if (created === "true") {
-      showToast("Organization created successfully!", "success");
-      // Remove the query param without reloading
-      const url = new URL(window.location.href);
-      url.searchParams.delete("created");
-      window.history.replaceState({}, "", url.toString());
-    }
-  }, [searchParams, showToast]);
-
-  useEffect(() => {
-    fetchOrganizations();
-  }, [search, filter]);
-
-  const fetchOrganizations = async () => {
-    setLoading(true);
-    try {
-      const params = new URLSearchParams();
-      if (search) params.append("search", search);
-      if (filter !== "all") params.append("status", filter);
-
-      const response = await fetch(`/api/platform/organizations?${params}`);
-      const data = await response.json();
-      setOrganizations(data);
-    } catch (error) {
-      console.error("Failed to fetch organizations:", error);
-      showToast("Failed to fetch organizations", "error");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleSuspend = async (orgId: string, currentStatus: string) => {
-    const action = currentStatus === "ACTIVE" ? "suspend" : "activate";
-    if (!confirm(`Are you sure you want to ${action} this organization?`))
-      return;
-
-    try {
-      const response = await fetch(
-        `/api/platform/organizations/${orgId}/suspend`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action }),
+export default async function OrganizationsPage() {
+  const organizations = await prisma.organization.findMany({
+    include: {
+      _count: {
+        select: {
+          memberships: true,
+          events: true,
+          houses: true
+        }
+      },
+      memberships: {
+        where: {
+          role: 'ORG_OWNER'
         },
-      );
-
-      if (response.ok) {
-        showToast(`Organization ${action}ed successfully!`, "success");
-        fetchOrganizations();
-      } else {
-        const error = await response.json();
-        showToast(error.error || `Failed to ${action} organization`, "error");
+        include: {
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true
+            }
+          }
+        },
+        take: 1
       }
-    } catch (error) {
-      console.error("Failed to update organization:", error);
-      showToast("Failed to update organization", "error");
-    }
-  };
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-      </div>
-    );
-  }
+    },
+    orderBy: { createdAt: 'desc' }
+  })
 
   return (
-    <div>
-      {toast && (
-        <Toast message={toast.message} type={toast.type} onClose={hideToast} />
-      )}
-
-      <div className="flex justify-between items-center mb-8">
-        <h1 className="text-2xl font-bold text-gray-900">Organizations</h1>
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Organizations</h1>
+          <p className="text-sm text-gray-500 mt-1">
+            Manage all organizations on the platform
+          </p>
+        </div>
         <Link
           href="/platform/organizations/create"
-          className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 flex items-center gap-2"
+          className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition"
         >
-          <span>+</span> Create Organization
+          <Plus className="h-4 w-4" />
+          Create Organization
         </Link>
       </div>
 
-      {/* Filters */}
-      <div className="bg-white rounded-lg shadow mb-6 p-4">
-        <div className="flex flex-col sm:flex-row gap-4">
-          <div className="flex-1">
-            <input
-              type="text"
-              placeholder="Search organizations..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-            />
+      {/* Stats Summary */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="bg-white rounded-xl border border-gray-200 p-5">
+          <div className="flex items-center justify-between">
+            <p className="text-sm text-gray-500">Total Organizations</p>
+            <Building2 className="h-5 w-5 text-blue-600" />
           </div>
-          <select
-            value={filter}
-            onChange={(e) => setFilter(e.target.value)}
-            className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-          >
-            <option value="all">All Status</option>
-            <option value="ACTIVE">Active</option>
-            <option value="SUSPENDED">Suspended</option>
-            <option value="CANCELLED">Cancelled</option>
-            <option value="TRIAL">Trial</option>
-          </select>
+          <p className="text-2xl font-bold text-gray-900 mt-2">{organizations.length}</p>
+        </div>
+        
+        <div className="bg-white rounded-xl border border-gray-200 p-5">
+          <div className="flex items-center justify-between">
+            <p className="text-sm text-gray-500">Active Organizations</p>
+            <div className="h-5 w-5 rounded-full bg-green-500"></div>
+          </div>
+          <p className="text-2xl font-bold text-gray-900 mt-2">
+            {organizations.filter(org => org.status === 'ACTIVE').length}
+          </p>
+        </div>
+        
+        <div className="bg-white rounded-xl border border-gray-200 p-5">
+          <div className="flex items-center justify-between">
+            <p className="text-sm text-gray-500">Trial Organizations</p>
+            <div className="h-5 w-5 rounded-full bg-yellow-500"></div>
+          </div>
+          <p className="text-2xl font-bold text-gray-900 mt-2">
+            {organizations.filter(org => org.status === 'TRIAL').length}
+          </p>
+        </div>
+        
+        <div className="bg-white rounded-xl border border-gray-200 p-5">
+          <div className="flex items-center justify-between">
+            <p className="text-sm text-gray-500">Total Members</p>
+            <Users className="h-5 w-5 text-purple-600" />
+          </div>
+          <p className="text-2xl font-bold text-gray-900 mt-2">
+            {organizations.reduce((acc, org) => acc + org._count.memberships, 0)}
+          </p>
         </div>
       </div>
 
-      {/* Organizations Table */}
-      <div className="bg-white rounded-lg shadow overflow-hidden">
-        {organizations.length === 0 ? (
-          <div className="text-center py-12">
-            <p className="text-gray-500">No organizations found</p>
-            <Link
-              href="/platform/organizations/create"
-              className="mt-4 inline-block text-blue-600 hover:text-blue-900"
-            >
-              Create your first organization
-            </Link>
-          </div>
-        ) : (
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Organization
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Slug
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Plan
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Members
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Houses
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Created
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Status
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Actions
-                </th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {organizations.map((org) => (
-                <tr key={org.id}>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <Link
-                      href={`/platform/organizations/${org.id}`}
-                      className="text-sm font-medium text-blue-600 hover:text-blue-900"
-                    >
-                      {org.name}
-                    </Link>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-sm text-gray-500">{org.slug}</div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
+      {/* Organizations Grid */}
+      {organizations.length === 0 ? (
+        <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
+          <Building2 className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+          <h3 className="text-lg font-medium text-gray-900 mb-2">No organizations yet</h3>
+          <p className="text-gray-500 mb-4">Get started by creating your first organization.</p>
+          <Link
+            href="/platform/organizations/create"
+            className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition"
+          >
+            <Plus className="h-4 w-4" />
+            Create Organization
+          </Link>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {organizations.map((org) => {
+            const owner = org.memberships[0]?.user
+            
+            return (
+              <div 
+                key={org.id} 
+                className="bg-white rounded-xl border border-gray-200 p-6 hover:shadow-lg transition group"
+              >
+                <div className="flex items-start justify-between">
+                  <Link 
+                    href={`/platform/organizations/${org.id}`}
+                    className="flex items-center gap-3 flex-1"
+                  >
+                    <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-indigo-500 rounded-lg flex items-center justify-center flex-shrink-0">
+                      {org.logoUrl ? (
+                        <img src={org.logoUrl} alt={org.name} className="w-8 h-8 rounded object-cover" />
+                      ) : (
+                        <Building2 className="h-6 w-6 text-white" />
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <h3 className="text-lg font-semibold text-gray-900 group-hover:text-blue-600 truncate">
+                        {org.name}
+                      </h3>
+                      <p className="text-sm text-gray-500 truncate">{org.slug}</p>
+                    </div>
+                  </Link>
+                  <div className="relative">
+                    <button className="p-1.5 hover:bg-gray-100 rounded-lg transition">
+                      <MoreVertical className="h-4 w-4 text-gray-400" />
+                    </button>
+                  </div>
+                </div>
+
+                {org.description && (
+                  <p className="mt-3 text-sm text-gray-600 line-clamp-2">
+                    {org.description}
+                  </p>
+                )}
+
+                <div className="mt-4 space-y-2">
+                  <div className="flex items-center gap-2">
+                    <span className={`px-2 py-0.5 text-xs font-medium rounded-full ${
+                      org.plan === 'ENTERPRISE' ? 'bg-purple-100 text-purple-800' :
+                      org.plan === 'PROFESSIONAL' ? 'bg-blue-100 text-blue-800' :
+                      org.plan === 'STARTER' ? 'bg-green-100 text-green-800' :
+                      'bg-gray-100 text-gray-800'
+                    }`}>
                       {org.plan}
                     </span>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {org._count.memberships}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {org._count.houses}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {format(new Date(org.createdAt), "MMM d, yyyy")}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <span
-                      className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                        org.status === "ACTIVE"
-                          ? "bg-green-100 text-green-800"
-                          : org.status === "SUSPENDED"
-                            ? "bg-red-100 text-red-800"
-                            : "bg-gray-100 text-gray-800"
-                      }`}
-                    >
+                    <span className={`px-2 py-0.5 text-xs font-medium rounded-full ${
+                      org.status === 'ACTIVE' ? 'bg-green-100 text-green-800' :
+                      org.status === 'SUSPENDED' ? 'bg-red-100 text-red-800' :
+                      org.status === 'TRIAL' ? 'bg-yellow-100 text-yellow-800' :
+                      'bg-gray-100 text-gray-800'
+                    }`}>
                       {org.status}
                     </span>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm">
-                    <button
-                      onClick={() => handleSuspend(org.id, org.status)}
-                      className={`mr-2 ${
-                        org.status === "ACTIVE"
-                          ? "text-red-600 hover:text-red-900"
-                          : "text-green-600 hover:text-green-900"
-                      }`}
-                    >
-                      {org.status === "ACTIVE" ? "Suspend" : "Activate"}
-                    </button>
-                    <Link
-                      href={`/platform/organizations/${org.id}`}
-                      className="text-blue-600 hover:text-blue-900"
-                    >
-                      View
-                    </Link>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
+                  </div>
+
+                  <div className="flex items-center gap-4 text-sm text-gray-500">
+                    <div className="flex items-center gap-1">
+                      <Users className="h-4 w-4" />
+                      <span>{org._count.memberships}</span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <Home className="h-4 w-4" />
+                      <span>{org._count.houses}</span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <Calendar className="h-4 w-4" />
+                      <span>{org._count.events}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {owner && (
+                  <div className="mt-4 pt-4 border-t border-gray-100">
+                    <p className="text-xs text-gray-500 mb-1">Owner</p>
+                    <div className="flex items-center gap-2">
+                      <div className="w-6 h-6 bg-blue-100 rounded-full flex items-center justify-center">
+                        <span className="text-blue-700 text-xs font-medium">
+                          {owner.name?.[0] || owner.email[0]}
+                        </span>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-gray-900 truncate">
+                          {owner.name || '—'}
+                        </p>
+                        <p className="text-xs text-gray-500 truncate">{owner.email}</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                <div className="mt-4 pt-3 border-t border-gray-100 flex items-center justify-between">
+                  <p className="text-xs text-gray-500">
+                    Created {new Date(org.createdAt).toLocaleDateString()}
+                  </p>
+                  <Link
+                    href={`/platform/organizations/${org.id}`}
+                    className="text-xs font-medium text-blue-600 hover:text-blue-700"
+                  >
+                    View Details →
+                  </Link>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
     </div>
-  );
+  )
 }

@@ -1,195 +1,180 @@
-"use client"
+// app/(auth)/login/page.tsx
+'use client'
 
-import { useState, useEffect } from "react"
-import { signIn, useSession } from "next-auth/react"
-import { useRouter, useSearchParams } from "next/navigation"
-import Link from "next/link"
+import { useState } from 'react'
+import { signIn } from 'next-auth/react'
+import { useRouter, useSearchParams } from 'next/navigation'
+import { useForm } from 'react-hook-form'
+import { zodResolver } from '@hookform/resolvers/zod'
+import { z } from 'zod'
+import Link from 'next/link'
+import toast from 'react-hot-toast'
+import { Eye, EyeOff } from 'lucide-react'
+
+const loginSchema = z.object({
+  email: z.string().email('Invalid email address'),
+  password: z.string().min(6, 'Password must be at least 6 characters'),
+})
+
+type LoginForm = z.infer<typeof loginSchema>
 
 export default function LoginPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const { data: session, status: sessionStatus } = useSession()
-  const callbackUrl = searchParams.get("callbackUrl") || "/dashboard"
-  const error = searchParams.get("error")
-  const verified = searchParams.get("verified")
-  const accountReady = searchParams.get("account_ready")
-  
-  const [email, setEmail] = useState("")
-  const [password, setPassword] = useState("")
-  const [loading, setLoading] = useState(false)
-  const [errorMessage, setErrorMessage] = useState("")
-  const [successMessage, setSuccessMessage] = useState("")
+  const [isLoading, setIsLoading] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
+  const verified = searchParams.get('verified')
+  
+  const {
+    register,
+    handleSubmit,
+    formState: { errors },
+  } = useForm<LoginForm>({
+    resolver: zodResolver(loginSchema),
+  })
 
-  // Redirect if already logged in
-  useEffect(() => {
-    console.log("Session status:", sessionStatus)
-    console.log("Session data:", session)
+  const onSubmit = async (data: LoginForm) => {
+    setIsLoading(true)
     
-    if (sessionStatus === "authenticated" && session?.user) {
-      console.log("User platformRole:", session.user.platformRole)
-      console.log("User memberships:", session.user.memberships)
-      
-      // Check platform role first
-      if (session.user.platformRole === "PLATFORM_ADMIN") {
-        console.log("Redirecting to platform dashboard")
-        router.push("/platform/dashboard")
-        return
-      }
-      
-      // Check if user has any memberships
-      if (!session.user.memberships || session.user.memberships.length === 0) {
-        console.log("No memberships found, redirecting to placeholder")
-        router.push("/dashboard/placeholder")
-        return
-      }
-      
-      // Find ORG_OWNER membership
-      const orgOwnerMembership = session.user.memberships.find(
-        (m: any) => m.organizationRole === "ORG_OWNER" && m.status === "ACTIVE"
-      )
-      
-      console.log("Org owner membership:", orgOwnerMembership)
-      
-      if (orgOwnerMembership && orgOwnerMembership.organization?.slug) {
-        console.log("Redirecting to org dashboard:", `/org/${orgOwnerMembership.organization.slug}/dashboard`)
-        router.push(`/org/${orgOwnerMembership.organization.slug}/dashboard`)
-      } else {
-        console.log("No active org owner membership found, redirecting to placeholder")
-        router.push("/dashboard/placeholder")
-      }
-    }
-  }, [sessionStatus, session, router])
-
-  useEffect(() => {
-    if (verified === "true") {
-      setSuccessMessage("Email verified successfully! You can now log in.")
-    }
-    if (accountReady === "true") {
-      setSuccessMessage("Account setup complete! Please log in with your new password.")
-    }
-    
-    if (error === "OAuthAccountNotLinked") {
-      setErrorMessage("Please sign in using the same method you used to create your account.")
-    } else if (error === "CredentialsSignin") {
-      setErrorMessage("Invalid email or password.")
-    }
-  }, [error, verified, accountReady])
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setLoading(true)
-    setErrorMessage("")
-    setSuccessMessage("")
-
     try {
-      const result = await signIn("credentials", {
-        email,
-        password,
+      const result = await signIn('credentials', {
+        email: data.email,
+        password: data.password,
         redirect: false,
-        callbackUrl,
       })
 
       if (result?.error) {
-        setErrorMessage(result.error)
-      } else {
-        router.refresh()
+        toast.error('Invalid email or password')
+        return
       }
+
+      toast.success('Welcome back!')
+      
+      // Always redirect to root dashboard which handles role-based routing
+      router.push('/dashboard')
+      router.refresh()
     } catch (error) {
-      setErrorMessage("An unexpected error occurred. Please try again.")
+      toast.error('Something went wrong')
     } finally {
-      setLoading(false)
+      setIsLoading(false)
     }
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-md w-full space-y-8">
-        <div className="text-center">
-          <h1 className="text-3xl font-bold text-blue-600">membersHome</h1>
-          <h2 className="mt-6 text-2xl font-bold text-gray-900">Sign in to your account</h2>
-          <p className="mt-2 text-sm text-gray-600">
-            Or{" "}
-            <Link href="/register" className="font-medium text-blue-600 hover:text-blue-500">
-              create a new account
-            </Link>
-          </p>
+    <div className="space-y-6">
+      {verified && (
+        <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg">
+          Email verified successfully! Please sign in.
+        </div>
+      )}
+      
+      <div>
+        <h3 className="text-lg font-medium text-gray-900">Welcome back</h3>
+        <p className="text-sm text-gray-500">Sign in to your account</p>
+      </div>
+      
+      <form className="space-y-4" onSubmit={handleSubmit(onSubmit)}>
+        <div>
+          <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
+            Email address
+          </label>
+          <input
+            {...register('email')}
+            type="email"
+            autoComplete="email"
+            className="block w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+            placeholder="you@example.com"
+          />
+          {errors.email && (
+            <p className="mt-1 text-sm text-red-600">{errors.email.message}</p>
+          )}
+        </div>
+        
+        <div>
+          <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1">
+            Password
+          </label>
+          <div className="relative">
+            <input
+              {...register('password')}
+              type={showPassword ? 'text' : 'password'}
+              autoComplete="current-password"
+              className="block w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 sm:text-sm pr-10"
+              placeholder="••••••••"
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword(!showPassword)}
+              className="absolute inset-y-0 right-0 pr-3 flex items-center"
+            >
+              {showPassword ? (
+                <EyeOff className="h-4 w-4 text-gray-400" />
+              ) : (
+                <Eye className="h-4 w-4 text-gray-400" />
+              )}
+            </button>
+          </div>
+          {errors.password && (
+            <p className="mt-1 text-sm text-red-600">{errors.password.message}</p>
+          )}
         </div>
 
-        {successMessage && (
-          <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-            <p className="text-sm text-green-600">{successMessage}</p>
-          </div>
-        )}
-
-        {errorMessage && (
-          <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-            <p className="text-sm text-red-600">{errorMessage}</p>
-          </div>
-        )}
-
-        <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
-          <div className="space-y-4">
-            <div>
-              <label htmlFor="email" className="block text-sm font-medium text-gray-700">
-                Email address
-              </label>
-              <input
-                id="email"
-                name="email"
-                type="email"
-                autoComplete="email"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                placeholder="you@example.com"
-              />
-            </div>
-
-            <div>
-              <label htmlFor="password" className="block text-sm font-medium text-gray-700">
-                Password
-              </label>
-              <div className="mt-1 relative">
-                <input
-                  id="password"
-                  name="password"
-                  type={showPassword ? "text" : "password"}
-                  autoComplete="current-password"
-                  required
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                  placeholder="••••••••"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute inset-y-0 right-0 pr-3 flex items-center"
-                >
-                  <span className="text-sm text-gray-500">
-                    {showPassword ? "Hide" : "Show"}
-                  </span>
-                </button>
-              </div>
-            </div>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center">
+            <input
+              id="remember-me"
+              name="remember-me"
+              type="checkbox"
+              className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+            />
+            <label htmlFor="remember-me" className="ml-2 block text-sm text-gray-700">
+              Remember me
+            </label>
           </div>
 
-          <div className="flex items-center justify-end">
-            <Link href="/forgot-password" className="text-sm text-blue-600 hover:text-blue-500">
-              Forgot your password?
-            </Link>
-          </div>
-
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+          <Link
+            href="/forgot-password"
+            className="text-sm font-medium text-blue-600 hover:text-blue-500"
           >
-            {loading ? "Signing in..." : "Sign in"}
-          </button>
-        </form>
+            Forgot password?
+          </Link>
+        </div>
+
+        <button
+          type="submit"
+          disabled={isLoading}
+          className="w-full flex justify-center py-2.5 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition"
+        >
+          {isLoading ? (
+            <>
+              <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+              </svg>
+              Signing in...
+            </>
+          ) : (
+            'Sign in'
+          )}
+        </button>
+      </form>
+
+      <div className="relative">
+        <div className="absolute inset-0 flex items-center">
+          <div className="w-full border-t border-gray-200"></div>
+        </div>
+        <div className="relative flex justify-center text-sm">
+          <span className="px-2 bg-white text-gray-500">Don't have an account?</span>
+        </div>
+      </div>
+
+      <div>
+        <Link
+          href="/register"
+          className="w-full flex justify-center py-2.5 px-4 border border-gray-300 rounded-lg shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition"
+        >
+          Create an account
+        </Link>
       </div>
     </div>
   )

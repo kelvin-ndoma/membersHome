@@ -1,101 +1,124 @@
-"use client"
+// components/ui/ImageUpload.tsx
+'use client'
 
-import { useState } from 'react'
+import { useState, useCallback } from 'react'
+import { useDropzone } from 'react-dropzone'
+import { Upload, X, Image as ImageIcon } from 'lucide-react'
 import Image from 'next/image'
 
 interface ImageUploadProps {
-  onUpload: (url: string, publicId: string) => void
-  existingImage?: string
+  value?: string
+  onChange: (url: string) => void
   folder?: string
+  className?: string
 }
 
-export default function ImageUpload({ onUpload, existingImage, folder = 'events' }: ImageUploadProps) {
-  const [uploading, setUploading] = useState(false)
-  const [imageUrl, setImageUrl] = useState(existingImage || '')
-  const [error, setError] = useState('')
+export default function ImageUpload({ value, onChange, folder = 'events', className }: ImageUploadProps) {
+  const [isUploading, setIsUploading] = useState(false)
+  const [preview, setPreview] = useState<string | null>(value || null)
 
-  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
+  const onDrop = useCallback(async (acceptedFiles: File[]) => {
+    const file = acceptedFiles[0]
     if (!file) return
 
-    if (!file.type.startsWith('image/')) {
-      setError('Please upload an image file')
-      return
-    }
-
-    if (file.size > 5 * 1024 * 1024) {
-      setError('Image must be less than 5MB')
-      return
-    }
-
-    setUploading(true)
-    setError('')
-
-    const formData = new FormData()
-    formData.append('file', file)
-    formData.append('folder', folder)
+    setIsUploading(true)
+    setPreview(URL.createObjectURL(file))
 
     try {
+      const formData = new FormData()
+      formData.append('file', file)
+      formData.append('folder', folder)
+
       const response = await fetch('/api/upload', {
         method: 'POST',
         body: formData,
       })
 
-      const data = await response.json()
+      const result = await response.json()
 
-      if (response.ok) {
-        setImageUrl(data.url)
-        onUpload(data.url, data.publicId)
-      } else {
-        setError(data.error || 'Upload failed')
+      if (!response.ok) {
+        throw new Error(result.error || 'Upload failed')
       }
+
+      onChange(result.url)
+      setPreview(result.url)
     } catch (error) {
-      setError('Upload failed')
+      console.error('Upload error:', error)
+      setPreview(value || null)
     } finally {
-      setUploading(false)
+      setIsUploading(false)
     }
+  }, [onChange, folder, value])
+
+  const { getRootProps, getInputProps, isDragActive } = useDropzone({
+    onDrop,
+    accept: {
+      'image/*': ['.jpeg', '.jpg', '.png', '.gif', '.webp']
+    },
+    maxFiles: 1,
+    maxSize: 5 * 1024 * 1024, // 5MB
+  })
+
+  const handleRemove = () => {
+    setPreview(null)
+    onChange('')
   }
 
   return (
-    <div className="space-y-3">
-      {imageUrl && (
-        <div className="relative w-full h-48 rounded-lg overflow-hidden bg-gray-100">
+    <div className={className}>
+      {preview ? (
+        <div className="relative rounded-lg overflow-hidden border border-gray-200">
           <Image
-            src={imageUrl}
-            alt="Event image"
-            fill
-            className="object-cover"
+            src={preview}
+            alt="Preview"
+            width={400}
+            height={225}
+            className="w-full h-48 object-cover"
           />
           <button
             type="button"
-            onClick={() => {
-              setImageUrl('')
-              onUpload('', '')
-            }}
-            className="absolute top-2 right-2 bg-red-500 text-white rounded-full p-1 hover:bg-red-600"
+            onClick={handleRemove}
+            className="absolute top-2 right-2 p-1.5 bg-red-600 text-white rounded-full hover:bg-red-700 transition"
           >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
+            <X className="h-4 w-4" />
           </button>
+          {isUploading && (
+            <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white"></div>
+            </div>
+          )}
+        </div>
+      ) : (
+        <div
+          {...getRootProps()}
+          className={`
+            border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition
+            ${isDragActive ? 'border-blue-500 bg-blue-50' : 'border-gray-300 hover:border-gray-400'}
+          `}
+        >
+          <input {...getInputProps()} />
+          <div className="flex flex-col items-center">
+            {isUploading ? (
+              <>
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mb-3"></div>
+                <p className="text-sm text-gray-600">Uploading...</p>
+              </>
+            ) : (
+              <>
+                <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mb-3">
+                  <ImageIcon className="h-6 w-6 text-gray-400" />
+                </div>
+                <p className="text-sm font-medium text-gray-900">
+                  {isDragActive ? 'Drop the image here' : 'Click or drag to upload'}
+                </p>
+                <p className="text-xs text-gray-500 mt-1">
+                  PNG, JPG, GIF, WebP up to 5MB
+                </p>
+              </>
+            )}
+          </div>
         </div>
       )}
-
-      <div className="flex items-center gap-4">
-        <label className={`cursor-pointer ${uploading ? 'opacity-50' : ''}`}>
-          <div className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition">
-            {uploading ? 'Uploading...' : imageUrl ? 'Change Image' : 'Upload Image'}
-          </div>
-          <input
-            type="file"
-            accept="image/*"
-            onChange={handleUpload}
-            disabled={uploading}
-            className="hidden"
-          />
-        </label>
-        {error && <p className="text-sm text-red-600">{error}</p>}
-      </div>
     </div>
   )
 }

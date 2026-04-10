@@ -1,113 +1,57 @@
-import { NextResponse } from "next/server"
-import { getServerSession } from "next-auth"
-import { authOptions } from "@/lib/auth/options"
-import { prisma } from "@/prisma/client"
+// app/api/platform/stats/route.ts
+import { NextResponse } from 'next/server'
+import { getServerSession } from 'next-auth'
+import { authOptions } from '@/lib/auth/auth.config'
+import { prisma } from '@/lib/prisma'
 
 export async function GET() {
   try {
     const session = await getServerSession(authOptions)
-    
-    if (!session || session.user.platformRole !== "PLATFORM_ADMIN") {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+
+    if (!session || session.user.platformRole !== 'PLATFORM_ADMIN') {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // Get total counts
     const [
-      totalOrganizations,
+      totalOrgs,
+      activeOrgs,
       totalUsers,
-      totalMemberships,
-      totalPayments,
-      recentOrganizations,
-      recentUsers,
+      totalHouses,
+      recentOrgs,
+      revenueStats
     ] = await Promise.all([
       prisma.organization.count(),
+      prisma.organization.count({ where: { status: 'ACTIVE' } }),
       prisma.user.count(),
-      prisma.membership.count(),
-      prisma.payment.aggregate({
-        _sum: { amount: true },
-        where: { status: "SUCCEEDED" }
-      }),
+      prisma.house.count(),
       prisma.organization.findMany({
-        take: 10,
-        orderBy: { createdAt: "desc" },
-        select: {
-          id: true,
-          name: true,
-          slug: true,
-          plan: true,
-          status: true,
-          createdAt: true,
+        take: 5,
+        orderBy: { createdAt: 'desc' },
+        include: {
+          _count: { select: { memberships: true } }
         }
       }),
-      prisma.user.findMany({
-        take: 10,
-        orderBy: { createdAt: "desc" },
-        select: {
-          id: true,
-          name: true,
-          email: true,
-          platformRole: true,
-          emailVerified: true,
-          createdAt: true,
-        }
-      }),
+      prisma.payment.aggregate({
+        where: {
+          status: 'SUCCEEDED',
+          createdAt: { gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) }
+        },
+        _sum: { amount: true }
+      })
     ])
 
-    // Get growth data using raw aggregation for MongoDB
-    const sixMonthsAgo = new Date()
-    sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6)
-    
-    const months = []
-    const orgCounts = []
-    const userCounts = []
-    
-    for (let i = 5; i >= 0; i--) {
-      const date = new Date()
-      date.setMonth(date.getMonth() - i)
-      const monthName = date.toLocaleString('default', { month: 'short' })
-      months.push(monthName)
-      
-      const monthStart = new Date(date.getFullYear(), date.getMonth(), 1)
-      const monthEnd = new Date(date.getFullYear(), date.getMonth() + 1, 0)
-      
-      const orgCount = await prisma.organization.count({
-        where: {
-          createdAt: {
-            gte: monthStart,
-            lte: monthEnd
-          }
-        }
-      })
-      orgCounts.push(orgCount)
-      
-      const userCount = await prisma.user.count({
-        where: {
-          createdAt: {
-            gte: monthStart,
-            lte: monthEnd
-          }
-        }
-      })
-      userCounts.push(userCount)
-    }
-
     return NextResponse.json({
-      totalOrganizations,
+      totalOrganizations: totalOrgs,
+      activeOrganizations: activeOrgs,
       totalUsers,
-      totalMemberships,
-      totalRevenue: totalPayments._sum.amount || 0,
-      recentOrganizations,
-      recentUsers,
-      growthData: {
-        months,
-        organizations: orgCounts,
-        users: userCounts,
-      }
+      totalHouses,
+      recentOrganizations: recentOrgs,
+      monthlyRevenue: revenueStats._sum.amount || 0
     })
   } catch (error) {
-    console.error("Failed to fetch platform stats:", error)
+    console.error('Platform stats error:', error)
     return NextResponse.json(
-      { error: "Failed to fetch stats" },
+      { error: 'Internal server error' },
       { status: 500 }
     )
   }

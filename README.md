@@ -1,143 +1,458 @@
 membershome/
 │
-├── app/                              # Next.js 13+ App Router
-│   ├── (auth)/                       # Authentication routes group
+├── app/
+│   ├── (auth)/
 │   │   ├── login/
+│   │   │   └── page.tsx
 │   │   ├── register/
+│   │   │   └── page.tsx
 │   │   ├── forgot-password/
+│   │   │   └── page.tsx
 │   │   ├── reset-password/
-│   │   └── verify-email/
+│   │   │   └── page.tsx
+│   │   ├── verify-email/
+│   │   │   └── page.tsx
+│   │   ├── signout/
+│   │   │   └── page.tsx
+│   │   └── accept-invite/
+│   │       └── page.tsx
 │   │
-│   ├── (platform)/                   # Platform admin routes (membersHome staff)
+│   ├── (platform)/
+│   │   └── platform/
+│   │       ├── layout.tsx
+│   │       ├── dashboard/
+│   │       │   └── page.tsx
+│   │       ├── organizations/
+│   │       │   ├── page.tsx
+│   │       │   ├── create/
+│   │       │   │   └── page.tsx
+│   │       │   └── [orgId]/
+│   │       │       └── page.tsx
+│   │       ├── users/
+│   │       │   ├── page.tsx
+│   │       │   └── [userId]/
+│   │       │       └── page.tsx
+│   │       ├── analytics/
+│   │       │   └── page.tsx
+│   │       ├── audit-logs/
+│   │       │   └── page.tsx
+│   │       ├── billing/
+│   │       │   └── page.tsx
+│   │       └── settings/
+│   │           └── page.tsx
+│   │
+│   ├── org/
+│   │   ├── layout.tsx
+│   │   └── [orgSlug]/
+│   │       ├── dashboard/
+│   │       │   └── page.tsx
+│   │       ├── houses/
+│   │       │   ├── page.tsx
+│   │       │   └── [houseSlug]/
+│   │       │       ├── dashboard/
+│   │       │       │   └── page.tsx
+│   │       │       ├── members/
+│   │       │       │   └── page.tsx
+│   │       │       ├── events/
+│   │       │       │   ├── page.tsx
+│   │       │       │   ├── create/
+│   │       │       │   │   └── page.tsx
+│   │       │       │   └── [eventId]/
+│   │       │       │       ├── page.tsx
+│   │       │       │       └── edit/
+│   │       │       │           └── page.tsx
+│   │       │       ├── tickets/
+│   │       │       │   ├── page.tsx
+│   │       │       │   ├── create/
+│   │       │       │   │   └── page.tsx
+│   │       │       │   └── [ticketId]/
+│   │       │       │       └── page.tsx
+│   │       │       ├── plans/
+│   │       │       │   ├── page.tsx
+│   │       │       │   ├── create/
+│   │       │       │   │   └── page.tsx
+│   │       │       │   └── [planId]/
+│   │       │       │       ├── page.tsx
+│   │       │       │       └── edit/
+│   │       │       │           └── page.tsx
+│   │       │       ├── applications/
+│   │       │       │   ├── page.tsx
+│   │       │       │   └── [applicationId]/
+│   │       │       │       └── page.tsx
+│   │       │       ├── communications/
+│   │       │       │   ├── page.tsx
+│   │       │       │   ├── create/
+│   │       │       │   │   └── page.tsx
+│   │       │       │   ├── templates/
+│   │       │       │   │   └── page.tsx
+│   │       │       │   └── [communicationId]/
+│   │       │       │       ├── page.tsx
+│   │       │       │       ├── edit/
+│   │       │       │       │   └── page.tsx
+│   │       │       │       └── analytics/
+│   │       │       │           └── page.tsx
+│   │       │       ├── forms/
+│   │       │       │   ├── page.tsx
+│   │       │       │   ├── create/
+│   │       │       │   │   └── page.tsx
+│   │       │       │   └── [formSlug]/
+│   │       │       │       ├── page.tsx
+│   │       │       │       ├── edit/
+│   │       │       │       │   └── page.tsx
+│   │       │       │       ├── submissions/
+│   │       │       │       │   ├── page.tsx
+│   │       │       │       │   └── [submissionId]/
+│   │       │       │       │       └── page.tsx
+│   │       │       │       └── embed/
+│   │       │       │           └── page.tsx
+│   │       │       ├── reports/
+│   │       │       │   └── page.tsx
+│   │       │       ├── audit-logs/
+│   │       │       │   └── page.tsx
+│   │       │       └── settings/
+│   │       │           └── page.tsx
+│   │       ├── reports/
+│   │       │   ├── page.tsx
+│   │       │   ├── membership/
+│   │       │   │   └── page.tsx
+│   │       │   ├── revenue/
+│   │       │   │   └── page.tsx
+│   │       │   ├── events/
+│   │       │   │   └── page.tsx
+│   │       │   └── engagement/
+│   │       │       └── page.tsx
+│   │       ├── audit-logs/
+│   │       │   └── page.tsx
+│   │       └── settings/
+│   │           └── page.tsx
+│   │
+│   ├── portal/                                    # ← CORRECTED: Portal scoped to house only
+│   │   ├── layout.tsx
+│   │   └── [houseSlug]/                           # ← Direct house slug, no org needed
+│   │       ├── dashboard/
+│   │       │   └── page.tsx
+│   │       ├── profile/
+│   │       │   └── page.tsx
+│   │       ├── directory/
+│   │       │   ├── page.tsx
+│   │       │   └── [memberId]/
+│   │       │       └── page.tsx
+│   │       ├── events/
+│   │       │   ├── page.tsx
+│   │       │   └── [eventId]/
+│   │       │       └── page.tsx
+│   │       ├── tickets/
+│   │       │   ├── page.tsx
+│   │       │   └── [ticketId]/
+│   │       │       └── page.tsx
+│   │       ├── messages/
+│   │       │   ├── page.tsx
+│   │       │   └── [messageId]/
+│   │       │       └── page.tsx
+│   │       ├── billing/
+│   │       │   ├── page.tsx
+│   │       │   └── payment-methods/
+│   │       │       └── page.tsx
+│   │       ├── membership/
+│   │       │   └── page.tsx
+│   │       └── settings/
+│   │           └── page.tsx
+│   │
+│   ├── (public)/
+│   │   ├── layout.tsx
+│   │   ├── [orgSlug]/
+│   │   │   └── [houseSlug]/
+│   │   │       ├── page.tsx
+│   │   │       ├── about/
+│   │   │       │   └── page.tsx
+│   │   │       ├── events/
+│   │   │       │   ├── page.tsx
+│   │   │       │   └── [eventSlug]/
+│   │   │       │       └── page.tsx
+│   │   │       └── membership/
+│   │   │           └── page.tsx
+│   │   └── forms/
+│   │       └── [formSlug]/
+│   │           └── page.tsx
+│   │
+│   ├── apply/
+│   │   ├── [orgSlug]/
+│   │   │   └── [houseSlug]/
+│   │   │       ├── page.tsx
+│   │   │       ├── plans/
+│   │   │       │   └── page.tsx
+│   │   │       └── success/
+│   │   │           └── page.tsx
+│   │   └── status/
+│   │       └── [applicationId]/
+│   │           └── page.tsx
+│   │
+│   ├── applications/
+│   │   └── [applicationId]/
+│   │       ├── page.tsx
+│   │       ├── select-plan/
+│   │       │   └── page.tsx
+│   │       ├── payment/
+│   │       │   └── page.tsx
+│   │       ├── success/
+│   │       │   └── page.tsx
+│   │       └── set-password/
+│   │           └── page.tsx
+│   │
+│   ├── validate/
+│   │   └── page.tsx
+│   │
+│   ├── api/
+│   │   ├── auth/
+│   │   │   ├── [...nextauth]/
+│   │   │   │   └── route.ts
+│   │   │   ├── register/
+│   │   │   │   └── route.ts
+│   │   │   ├── signout/
+│   │   │   │   └── route.ts
+│   │   │   ├── verify-email/
+│   │   │   │   └── route.ts
+│   │   │   ├── forgot-password/
+│   │   │   │   └── route.ts
+│   │   │   ├── reset-password/
+│   │   │   │   └── route.ts
+│   │   │   ├── accept-invite/
+│   │   │   │   └── route.ts
+│   │   │   └── accept-member-invite/
+│   │   │       └── route.ts
+│   │   │
 │   │   ├── platform/
-│   │   │   ├── dashboard/
+│   │   │   ├── stats/
+│   │   │   │   └── route.ts
 │   │   │   ├── organizations/
+│   │   │   │   ├── route.ts
+│   │   │   │   └── [orgId]/
+│   │   │   │       ├── route.ts
+│   │   │   │       ├── suspend/
+│   │   │   │       │   └── route.ts
+│   │   │   │       └── houses/
+│   │   │   │           └── route.ts
 │   │   │   ├── users/
-│   │   │   ├── analytics/
-│   │   │   ├── settings/
-│   │   │   └── billing/
-│   │   └── layout.tsx
-│   │
-│   ├── (org)/                        # Organization admin routes
+│   │   │   │   ├── route.ts
+│   │   │   │   └── [userId]/
+│   │   │   │       ├── route.ts
+│   │   │   │       └── role/
+│   │   │   │           └── route.ts
+│   │   │   ├── audit-logs/
+│   │   │   │   └── route.ts
+│   │   │   └── settings/
+│   │   │       └── route.ts
+│   │   │
 │   │   ├── org/
 │   │   │   ├── [orgSlug]/
+│   │   │   │   ├── route.ts
 │   │   │   │   ├── dashboard/
-│   │   │   │   ├── members/
+│   │   │   │   │   └── route.ts
 │   │   │   │   ├── houses/
-│   │   │   │   ├── membership-plans/
-│   │   │   │   ├── events/
-│   │   │   │   ├── applications/
-│   │   │   │   ├── communications/
+│   │   │   │   │   ├── route.ts
+│   │   │   │   │   └── [houseSlug]/
+│   │   │   │   │       ├── route.ts
+│   │   │   │   │       ├── stats/
+│   │   │   │   │       │   └── route.ts
+│   │   │   │   │       ├── members/
+│   │   │   │   │       │   ├── route.ts
+│   │   │   │   │       │   ├── import/
+│   │   │   │   │       │   │   └── route.ts
+│   │   │   │   │       │   └── export/
+│   │   │   │   │       │       └── route.ts
+│   │   │   │   │       ├── events/
+│   │   │   │   │       │   ├── route.ts
+│   │   │   │   │       │   └── [eventId]/
+│   │   │   │   │       │       └── route.ts
+│   │   │   │   │       ├── tickets/
+│   │   │   │   │       │   ├── route.ts
+│   │   │   │   │       │   └── [ticketId]/
+│   │   │   │   │       │       └── route.ts
+│   │   │   │   │       ├── plans/
+│   │   │   │   │       │   ├── route.ts
+│   │   │   │   │       │   └── [planId]/
+│   │   │   │   │       │       └── route.ts
+│   │   │   │   │       ├── applications/
+│   │   │   │   │       │   ├── route.ts
+│   │   │   │   │       │   └── [applicationId]/
+│   │   │   │   │       │       ├── route.ts
+│   │   │   │   │       │       ├── move-to-reviewing/
+│   │   │   │   │       │       │   └── route.ts
+│   │   │   │   │       │       ├── process-payment/
+│   │   │   │   │       │       │   └── route.ts
+│   │   │   │   │       │       ├── retry-payment/
+│   │   │   │   │       │       │   └── route.ts
+│   │   │   │   │       │       └── reject/
+│   │   │   │   │       │           └── route.ts
+│   │   │   │   │       ├── communications/
+│   │   │   │   │       │   ├── route.ts
+│   │   │   │   │       │   └── [communicationId]/
+│   │   │   │   │       │       ├── route.ts
+│   │   │   │   │       │       ├── send/
+│   │   │   │   │       │       │   └── route.ts
+│   │   │   │   │       │       └── analytics/
+│   │   │   │   │       │           └── route.ts
+│   │   │   │   │       ├── forms/
+│   │   │   │   │       │   ├── route.ts
+│   │   │   │   │       │   └── [formSlug]/
+│   │   │   │   │       │       ├── route.ts
+│   │   │   │   │       │       ├── submissions/
+│   │   │   │   │       │       │   ├── route.ts
+│   │   │   │   │       │       │   └── [submissionId]/
+│   │   │   │   │       │       │       └── route.ts
+│   │   │   │   │       │       └── publish/
+│   │   │   │   │       │           └── route.ts
+│   │   │   │   │       ├── reports/
+│   │   │   │   │       │   └── route.ts
+│   │   │   │   │       ├── audit-logs/
+│   │   │   │   │       │   └── route.ts
+│   │   │   │   │       └── settings/
+│   │   │   │   │           └── route.ts
 │   │   │   │   ├── reports/
-│   │   │   │   ├── settings/
-│   │   │   │   └── billing/
-│   │   │   └── layout.tsx
-│   │   └── layout.tsx
-│   │
-│   ├── (house)/                      # House admin & member portal routes
-│   │   ├── house/
-│   │   │   ├── [orgSlug]/
-│   │   │   │   ├── [houseSlug]/
-│   │   │   │   │   ├── portal/      # Member portal
-│   │   │   │   │   │   ├── dashboard/
-│   │   │   │   │   │   ├── events/
-│   │   │   │   │   │   ├── tickets/
-│   │   │   │   │   │   ├── announcements/
-│   │   │   │   │   │   ├── profile/
-│   │   │   │   │   │   ├── billing/
-│   │   │   │   │   │   ├── directory/
-│   │   │   │   │   │   ├── messages/
-│   │   │   │   │   │   └── settings/
-│   │   │   │   │   │
-│   │   │   │   │   ├── admin/        # House admin dashboard
-│   │   │   │   │   │   ├── dashboard/
-│   │   │   │   │   │   ├── members/
-│   │   │   │   │   │   ├── events/
-│   │   │   │   │   │   ├── forms/
-│   │   │   │   │   │   ├── communications/
-│   │   │   │   │   │   ├── reports/
-│   │   │   │   │   │   └── settings/
-│   │   │   │   │   │
-│   │   │   │   │   └── layout.tsx
-│   │   │   │   └── page.tsx
-│   │   │   └── layout.tsx
-│   │   └── layout.tsx
-│   │
-│   ├── api/                          # Next.js API routes
-│   │   ├── auth/                     # Next-Auth configuration
-│   │   │   └── [...nextauth]/
+│   │   │   │   │   └── route.ts
+│   │   │   │   ├── audit-logs/
+│   │   │   │   │   └── route.ts
+│   │   │   │   └── settings/
+│   │   │   │       └── route.ts
+│   │   │   └── dashboard/
 │   │   │       └── route.ts
-│   │   ├── platform/                 # Platform admin APIs
-│   │   ├── org/                      # Organization APIs
-│   │   ├── house/                    # House APIs
-│   │   └── webhooks/                 # External webhooks
+│   │   │
+│   │   ├── portal/                                    # ← CORRECTED: API scoped to house only
+│   │   │   └── [houseSlug]/
+│   │   │       ├── dashboard/
+│   │   │       │   └── route.ts
+│   │   │       ├── profile/
+│   │   │       │   └── route.ts
+│   │   │       ├── directory/
+│   │   │       │   └── route.ts
+│   │   │       ├── events/
+│   │   │       │   ├── route.ts
+│   │   │       │   └── [eventId]/
+│   │   │       │       ├── route.ts
+│   │   │       │       └── rsvp/
+│   │   │       │           └── route.ts
+│   │   │       ├── tickets/
+│   │   │       │   ├── route.ts
+│   │   │       │   ├── purchase/
+│   │   │       │   │   └── route.ts
+│   │   │       │   └── [ticketId]/
+│   │   │       │       ├── route.ts
+│   │   │       │       └── download/
+│   │   │       │           └── route.ts
+│   │   │       ├── messages/
+│   │   │       │   ├── route.ts
+│   │   │       │   └── [messageId]/
+│   │   │       │       ├── route.ts
+│   │   │       │       └── read/
+│   │   │       │           └── route.ts
+│   │   │       ├── billing/
+│   │   │       │   ├── route.ts
+│   │   │       │   ├── payment-methods/
+│   │   │       │   │   └── route.ts
+│   │   │       │   └── invoices/
+│   │   │       │       └── [invoiceId]/
+│   │   │       │           └── download/
+│   │   │       │               └── route.ts
+│   │   │       ├── membership/
+│   │   │       │   ├── route.ts
+│   │   │       │   ├── cancel/
+│   │   │       │   │   └── route.ts
+│   │   │       │   └── pause/
+│   │   │       │       └── route.ts
+│   │   │       ├── activities/
+│   │   │       │   └── route.ts
+│   │   │       └── settings/
+│   │   │           └── route.ts
+│   │   │
+│   │   ├── public/
+│   │   │   ├── house/
+│   │   │   │   └── [orgSlug]/
+│   │   │   │       └── [houseSlug]/
+│   │   │   │           └── route.ts
+│   │   │   ├── events/
+│   │   │   │   └── [orgSlug]/
+│   │   │   │       └── [houseSlug]/
+│   │   │   │           └── route.ts
+│   │   │   └── forms/
+│   │   │       └── [formSlug]/
+│   │   │           └── route.ts
+│   │   │
+│   │   ├── apply/
+│   │   │   └── route.ts
+│   │   │
+│   │   ├── applications/
+│   │   │   └── [applicationId]/
+│   │   │       ├── route.ts
+│   │   │       ├── authorize-card/
+│   │   │       │   └── route.ts
+│   │   │       ├── payment-details/
+│   │   │       │   └── route.ts
+│   │   │       ├── select-plan-data/
+│   │   │       │   └── route.ts
+│   │   │       ├── process-payment/
+│   │   │       │   └── route.ts
+│   │   │       ├── set-password/
+│   │   │       │   └── route.ts
+│   │   │       └── status/
+│   │   │           └── route.ts
+│   │   │
+│   │   ├── tickets/
+│   │   │   ├── validate/
+│   │   │   │   └── route.ts
+│   │   │   └── [ticketCode]/
+│   │   │       └── validate/
+│   │   │           └── route.ts
+│   │   │
+│   │   ├── upload/
+│   │   │   └── route.ts
+│   │   │
+│   │   └── webhooks/
 │   │       ├── stripe/
-│   │       └── sendgrid/
+│   │       │   ├── route.ts
+│   │       │   └── connect/
+│   │       │       └── route.ts
+│   │       ├── resend/
+│   │       │   └── route.ts
+│   │       └── cloudinary/
+│   │           └── route.ts
 │   │
 │   ├── layout.tsx
 │   ├── page.tsx
+│   ├── globals.css
+│   └── providers.tsx
+│
+├── components/
+│   └── ... (same as before, no changes needed)
+│
+├── lib/
+│   └── ... (same as before)
+│
+├── contexts/
+│   └── ... (same as before)
+│
+├── providers/
+│   └── ... (same as before)
+│
+├── hooks/
+│   └── ... (same as before)
+│
+├── prisma/
+│   └── ... (same as before)
+│
+├── public/
+│   └── ... (same as before)
+│
+├── styles/
 │   └── globals.css
 │
-├── components/                       # Reusable React components
-│   ├── ui/                          # Shadcn/ui components
-│   ├── layout/                      # Layout components
-│   ├── auth/                        # Auth components
-│   ├── platform/                    # Platform admin components
-│   ├── org/                         # Organization components
-│   ├── house/                       # House components
-│   │   ├── portal/                  # Member portal components
-│   │   └── admin/                   # House admin components
-│   ├── events/                      # Shared event components
-│   ├── billing/                     # Billing components
-│   └── shared/                      # Shared components
+├── scripts/
+│   └── ... (same as before)
 │
-├── lib/                             # Core libraries & utilities
-│   ├── prisma/                      # Prisma client (ONE Prisma instance)
-│   │   ├── client.ts                # Singleton Prisma client
-│   │   ├── seed.ts                  # Database seed script
-│   │   └── migrations/              # Prisma migrations
-│   │
-│   ├── auth/                        # Next-Auth configuration
-│   │   ├── options.ts
-│   │   └── roles.ts
-│   │
-│   ├── db/                          # Database utilities
-│   │   ├── mongodb.ts               # MongoDB connection
-│   │   ├── repositories/            # Data access layer
-│   │   └── queries/                 # Complex queries
-│   │
-│   ├── services/                    # Business logic layer
-│   │   ├── auth/
-│   │   ├── organization/
-│   │   ├── member/
-│   │   ├── events/
-│   │   ├── billing/
-│   │   ├── communication/
-│   │   ├── forms/
-│   │   ├── reporting/
-│   │   └── portal/
-│   │
-│   ├── middleware/                  # Custom middleware
-│   ├── utils/                       # Utility functions
-│   ├── constants/                   # App constants
-│   ├── types/                       # TypeScript type definitions
-│   ├── validators/                  # Zod validation schemas
-│   └── hooks/                       # Custom React hooks
+├── tests/
+│   └── ... (same as before)
 │
-├── contexts/                        # React context providers
-├── providers/                       # App providers
-├── styles/                          # Global styles
-├── public/                          # Static assets
-├── prisma/                          # Prisma schema (symlink to lib/prisma)
-│   └── schema.prisma                # Database schema definition
-│
-├── scripts/                         # Utility scripts
-├── tests/                           # Testing
-│   ├── unit/
-│   ├── integration/
-│   └── e2e/
-│
-├── docs/                            # Documentation
+├── types/
+│   └── ... (same as before)
 │
 ├── .env.local
 ├── .env.example
@@ -146,6 +461,5 @@ membershome/
 ├── tsconfig.json
 ├── tailwind.config.js
 ├── next.config.js
-├── middleware.ts                    # Next.js middleware
-├── next-auth.d.ts
+├── middleware.ts
 └── README.md

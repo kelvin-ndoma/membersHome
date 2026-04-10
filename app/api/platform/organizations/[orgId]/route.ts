@@ -1,7 +1,8 @@
-import { NextRequest, NextResponse } from "next/server"
-import { getServerSession } from "next-auth"
-import { authOptions } from "@/lib/auth/options"
-import { prisma } from "@/prisma/client"
+// app/api/platform/organizations/[orgId]/route.ts
+import { NextRequest, NextResponse } from 'next/server'
+import { getServerSession } from 'next-auth'
+import { authOptions } from '@/lib/auth/auth.config'
+import { prisma } from '@/lib/prisma'
 
 export async function GET(
   req: NextRequest,
@@ -9,30 +10,31 @@ export async function GET(
 ) {
   try {
     const session = await getServerSession(authOptions)
-    
-    if (!session || session.user.platformRole !== "PLATFORM_ADMIN") {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+
+    if (!session || session.user.platformRole !== 'PLATFORM_ADMIN') {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const { orgId } = params
-
     const organization = await prisma.organization.findUnique({
-      where: { id: orgId },
+      where: { id: params.orgId },
       include: {
         _count: {
           select: {
             memberships: true,
             houses: true,
             events: true,
+            tickets: true,
+            payments: true
           }
         },
         memberships: {
-          orderBy: { createdAt: "desc" },
           include: {
             user: {
               select: {
+                id: true,
                 name: true,
                 email: true,
+                image: true
               }
             }
           }
@@ -40,9 +42,7 @@ export async function GET(
         houses: {
           include: {
             _count: {
-              select: {
-                members: true,
-              }
+              select: { members: true }
             }
           }
         }
@@ -50,52 +50,63 @@ export async function GET(
     })
 
     if (!organization) {
-      return NextResponse.json({ error: "Organization not found" }, { status: 404 })
+      return NextResponse.json(
+        { error: 'Organization not found' },
+        { status: 404 }
+      )
     }
 
-    return NextResponse.json(organization)
+    return NextResponse.json({ organization })
   } catch (error) {
-    console.error("Failed to fetch organization:", error)
+    console.error('Get organization error:', error)
     return NextResponse.json(
-      { error: "Failed to fetch organization" },
+      { error: 'Internal server error' },
       { status: 500 }
     )
   }
 }
 
-export async function PUT(
+export async function PATCH(
   req: NextRequest,
   { params }: { params: { orgId: string } }
 ) {
   try {
     const session = await getServerSession(authOptions)
-    
-    if (!session || session.user.platformRole !== "PLATFORM_ADMIN") {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+
+    if (!session || session.user.platformRole !== 'PLATFORM_ADMIN') {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const { orgId } = params
-    const { name, slug, description, plan } = await req.json()
+    const updates = await req.json()
 
     const organization = await prisma.organization.update({
-      where: { id: orgId },
+      where: { id: params.orgId },
+      data: updates
+    })
+
+    await prisma.auditLog.create({
       data: {
-        name: name || undefined,
-        slug: slug || undefined,
-        description: description || undefined,
-        plan: plan || undefined,
+        userId: session.user.id,
+        userEmail: session.user.email,
+        action: 'ORGANIZATION_UPDATED',
+        entityType: 'ORGANIZATION',
+        entityId: organization.id,
+        organizationId: organization.id,
+        metadata: { updates }
       }
     })
 
-    return NextResponse.json(organization)
+    return NextResponse.json({ organization })
   } catch (error) {
-    console.error("Failed to update organization:", error)
+    console.error('Update organization error:', error)
     return NextResponse.json(
-      { error: "Failed to update organization" },
+      { error: 'Internal server error' },
       { status: 500 }
     )
   }
 }
+
+// app/api/platform/organizations/[orgId]/route.ts - DELETE function only
 
 export async function DELETE(
   req: NextRequest,
@@ -103,185 +114,280 @@ export async function DELETE(
 ) {
   try {
     const session = await getServerSession(authOptions)
-    
-    if (!session || session.user.platformRole !== "PLATFORM_ADMIN") {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+
+    if (!session || session.user.platformRole !== 'PLATFORM_ADMIN') {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const { orgId } = params
+    const body = await req.json().catch(() => ({}))
+    const { permanent = false, reason } = body
 
-    // Get organization details for logging
+    console.log('DELETE called with permanent:', permanent)
+
     const organization = await prisma.organization.findUnique({
-      where: { id: orgId },
-      include: {
-        _count: {
-          select: {
-            houses: true,
-            memberships: true,
-            events: true,
-          }
-        }
-      }
+      where: { id: params.orgId }
     })
 
     if (!organization) {
-      return NextResponse.json({ error: "Organization not found" }, { status: 404 })
+      return NextResponse.json(
+        { error: 'Organization not found' },
+        { status: 404 }
+      )
     }
 
-    console.log(`Starting deletion of organization: ${organization.name} (${orgId})`)
+    if (permanent) {
+      console.log('Performing PERMANENT DELETE')
+      
+      // Increase transaction timeout to 30 seconds
+      await prisma.$transaction(
+        async (tx) => {
+          // Batch delete operations for efficiency
+          
+          // 1. Delete all member-related data for houses in this org
+          const houses = await tx.house.findMany({
+            where: { organizationId: params.orgId },
+            select: { id: true }
+          })
+          const houseIds = houses.map(h => h.id)
 
-    // Delete in sequence - NO TRANSACTION
-    // 1. Delete house memberships
-    console.log("Deleting house memberships...")
-    await prisma.houseMembership.deleteMany({
-      where: {
-        house: {
-          organizationId: orgId
+          if (houseIds.length > 0) {
+            // Delete member dashboards
+            await tx.memberDashboard.deleteMany({ 
+              where: { houseId: { in: houseIds } } 
+            })
+            
+            // Delete member profiles
+            await tx.memberProfile.deleteMany({ 
+              where: { houseId: { in: houseIds } } 
+            })
+            
+            // Delete member activities
+            await tx.memberActivity.deleteMany({ 
+              where: { houseMembership: { houseId: { in: houseIds } } } 
+            })
+            
+            // Delete house memberships
+            await tx.houseMembership.deleteMany({ 
+              where: { houseId: { in: houseIds } } 
+            })
+          }
+
+          // 2. Delete member portals
+          await tx.memberPortal.deleteMany({ 
+            where: { organizationId: params.orgId } 
+          })
+
+          // 3. Delete ticket-related data
+          const tickets = await tx.ticket.findMany({
+            where: { organizationId: params.orgId },
+            select: { id: true }
+          })
+          const ticketIds = tickets.map(t => t.id)
+
+          if (ticketIds.length > 0) {
+            const purchases = await tx.ticketPurchase.findMany({
+              where: { ticketId: { in: ticketIds } },
+              select: { id: true }
+            })
+            const purchaseIds = purchases.map(p => p.id)
+
+            if (purchaseIds.length > 0) {
+              await tx.ticketValidation.deleteMany({
+                where: { purchaseId: { in: purchaseIds } }
+              })
+              
+              await tx.payment.deleteMany({
+                where: { ticketPurchaseId: { in: purchaseIds } }
+              })
+            }
+
+            await tx.ticketPurchase.deleteMany({
+              where: { ticketId: { in: ticketIds } }
+            })
+          }
+
+          await tx.ticket.deleteMany({ 
+            where: { organizationId: params.orgId } 
+          })
+
+          // 4. Delete RSVPs and events
+          await tx.rSVP.deleteMany({ 
+            where: { organizationId: params.orgId } 
+          })
+          
+          await tx.event.deleteMany({ 
+            where: { organizationId: params.orgId } 
+          })
+
+          // 5. Delete member messages
+          await tx.memberMessage.deleteMany({ 
+            where: { organizationId: params.orgId } 
+          })
+
+          // 6. Delete forms and submissions
+          const forms = await tx.customForm.findMany({
+            where: { organizationId: params.orgId },
+            select: { id: true }
+          })
+          const formIds = forms.map(f => f.id)
+
+          if (formIds.length > 0) {
+            await tx.formSubmission.deleteMany({
+              where: { formId: { in: formIds } }
+            })
+          }
+
+          await tx.customForm.deleteMany({ 
+            where: { organizationId: params.orgId } 
+          })
+
+          // 7. Delete communications and reports
+          await tx.communication.deleteMany({ 
+            where: { organizationId: params.orgId } 
+          })
+          
+          await tx.report.deleteMany({ 
+            where: { organizationId: params.orgId } 
+          })
+
+          // 8. Delete invoices
+          await tx.invoice.deleteMany({ 
+            where: { organizationId: params.orgId } 
+          })
+
+          // 9. Delete membership plans and related data
+          const plans = await tx.membershipPlan.findMany({
+            where: { organizationId: params.orgId },
+            select: { id: true }
+          })
+          const planIds = plans.map(p => p.id)
+
+          if (planIds.length > 0) {
+            await tx.planPrice.deleteMany({
+              where: { membershipPlanId: { in: planIds } }
+            })
+          }
+
+          // 10. Delete membership applications
+          const applications = await tx.membershipApplication.findMany({
+            where: { organizationId: params.orgId },
+            select: { id: true }
+          })
+          const applicationIds = applications.map(a => a.id)
+
+          if (applicationIds.length > 0) {
+            await tx.payment.deleteMany({
+              where: { membershipApplicationId: { in: applicationIds } }
+            })
+          }
+
+          await tx.membershipApplication.deleteMany({ 
+            where: { organizationId: params.orgId } 
+          })
+
+          // 11. Delete membership items and cancellation requests
+          await tx.cancellationRequest.deleteMany({ 
+            where: { membershipItem: { organizationId: params.orgId } } 
+          })
+          
+          await tx.membershipItem.deleteMany({ 
+            where: { organizationId: params.orgId } 
+          })
+
+          // 12. Delete membership plans
+          await tx.membershipPlan.deleteMany({ 
+            where: { organizationId: params.orgId } 
+          })
+
+          // 13. Delete any remaining payments
+          await tx.payment.deleteMany({ 
+            where: { organizationId: params.orgId } 
+          })
+
+          // 14. Delete houses
+          await tx.house.deleteMany({ 
+            where: { organizationId: params.orgId } 
+          })
+
+          // 15. Delete memberships
+          await tx.membership.deleteMany({ 
+            where: { organizationId: params.orgId } 
+          })
+
+          // 16. Delete audit logs
+          await tx.auditLog.deleteMany({ 
+            where: { organizationId: params.orgId } 
+          })
+
+          // 17. Finally delete the organization
+          await tx.organization.delete({ 
+            where: { id: params.orgId } 
+          })
+        },
+        {
+          timeout: 30000, // 30 seconds timeout
+          maxWait: 5000,  // Wait up to 5 seconds to start transaction
         }
-      }
-    })
+      )
 
-    // 2. Delete all houses
-    console.log("Deleting houses...")
-    await prisma.house.deleteMany({
-      where: { organizationId: orgId }
-    })
-
-    // 3. Delete RSVPs
-    console.log("Deleting RSVPs...")
-    await prisma.rSVP.deleteMany({
-      where: { organizationId: orgId }
-    })
-
-    // 4. Get all ticket purchases for this organization
-    const ticketPurchases = await prisma.ticketPurchase.findMany({
-      where: { organizationId: orgId },
-      select: { id: true }
-    })
-    
-    // 5. Delete ticket validations
-    if (ticketPurchases.length > 0) {
-      console.log(`Deleting ${ticketPurchases.length} ticket validations...`)
-      await prisma.ticketValidation.deleteMany({
-        where: {
-          purchaseId: { in: ticketPurchases.map(p => p.id) }
+      // Create final audit log
+      await prisma.auditLog.create({
+        data: {
+          userId: session.user.id,
+          userEmail: session.user.email,
+          action: 'ORGANIZATION_DELETED_PERMANENTLY',
+          entityType: 'ORGANIZATION',
+          entityId: params.orgId,
+          metadata: {
+            organizationName: organization.name,
+            organizationSlug: organization.slug,
+            reason: reason || 'No reason provided',
+            deletedBy: session.user.email,
+            deletedAt: new Date().toISOString(),
+          }
         }
       })
-    }
 
-    // 6. Delete ticket purchases
-    console.log("Deleting ticket purchases...")
-    await prisma.ticketPurchase.deleteMany({
-      where: { organizationId: orgId }
-    })
-
-    // 7. Delete tickets
-    console.log("Deleting tickets...")
-    await prisma.ticket.deleteMany({
-      where: { organizationId: orgId }
-    })
-
-    // 8. Delete events
-    console.log("Deleting events...")
-    await prisma.event.deleteMany({
-      where: { organizationId: orgId }
-    })
-
-    // 9. Delete invoices
-    console.log("Deleting invoices...")
-    await prisma.invoice.deleteMany({
-      where: { organizationId: orgId }
-    })
-
-    // 10. Delete payments
-    console.log("Deleting payments...")
-    await prisma.payment.deleteMany({
-      where: { organizationId: orgId }
-    })
-
-    // 11. Delete communications
-    console.log("Deleting communications...")
-    await prisma.communication.deleteMany({
-      where: { organizationId: orgId }
-    })
-
-    // 12. Delete reports
-    console.log("Deleting reports...")
-    await prisma.report.deleteMany({
-      where: { organizationId: orgId }
-    })
-
-    // 13. Delete audit logs
-    console.log("Deleting audit logs...")
-    await prisma.auditLog.deleteMany({
-      where: { organizationId: orgId }
-    })
-
-    // 14. Delete membership applications
-    console.log("Deleting membership applications...")
-    await prisma.membershipApplication.deleteMany({
-      where: { organizationId: orgId }
-    })
-
-    // 15. Delete membership items
-    console.log("Deleting membership items...")
-    await prisma.membershipItem.deleteMany({
-      where: { organizationId: orgId }
-    })
-
-    // 16. Delete membership plans
-    console.log("Deleting membership plans...")
-    await prisma.membershipPlan.deleteMany({
-      where: { organizationId: orgId }
-    })
-
-    // 17. Delete custom forms
-    console.log("Deleting custom forms...")
-    await prisma.customForm.deleteMany({
-      where: { organizationId: orgId }
-    })
-
-    // 18. Delete memberships
-    console.log("Deleting memberships...")
-    await prisma.membership.deleteMany({
-      where: { organizationId: orgId }
-    })
-
-    // 19. Finally, delete the organization
-    console.log("Deleting organization...")
-    await prisma.organization.delete({
-      where: { id: orgId }
-    })
-
-    // Log the action
-    await prisma.auditLog.create({
-      data: {
-        userId: session.user.id,
-        userEmail: session.user.email,
-        action: "ORGANIZATION_DELETED",
-        entityType: "ORGANIZATION",
-        entityId: orgId,
-        metadata: {
-          organizationName: organization.name,
-          housesCount: organization._count.houses,
-          membersCount: organization._count.memberships,
-          eventsCount: organization._count.events,
-          deletedBy: session.user.email,
-          deletedAt: new Date().toISOString(),
+      console.log('Organization permanently deleted')
+      
+      return NextResponse.json({
+        success: true,
+        message: 'Organization permanently deleted'
+      })
+    } else {
+      // SOFT DELETE - Cancel only
+      console.log('Performing SOFT DELETE')
+      
+      const updatedOrg = await prisma.organization.update({
+        where: { id: params.orgId },
+        data: {
+          status: 'CANCELLED',
+          suspendedAt: new Date()
         }
-      }
-    })
+      })
 
-    console.log(`Successfully deleted organization: ${organization.name}`)
+      await prisma.auditLog.create({
+        data: {
+          userId: session.user.id,
+          userEmail: session.user.email,
+          action: 'ORGANIZATION_CANCELLED',
+          entityType: 'ORGANIZATION',
+          entityId: organization.id,
+          organizationId: organization.id,
+          metadata: { reason }
+        }
+      })
 
-    return NextResponse.json({ 
-      success: true,
-      message: `Organization "${organization.name}" and all associated data have been permanently deleted.`
-    })
+      return NextResponse.json({
+        success: true,
+        message: 'Organization cancelled',
+        organization: updatedOrg
+      })
+    }
   } catch (error) {
-    console.error("Failed to delete organization:", error)
+    console.error('Delete organization error:', error)
     return NextResponse.json(
-      { error: "Failed to delete organization. Please try again." },
+      { error: 'Internal server error', details: error instanceof Error ? error.message : 'Unknown error' },
       { status: 500 }
     )
   }

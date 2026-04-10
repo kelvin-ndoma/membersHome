@@ -1,43 +1,76 @@
-import { Section, Heading, Text, Button } from "@react-email/components"
-import { BaseEmail } from "./base"
+// lib/email/templates/announcement.tsx
+import {
+  Body,
+  Container,
+  Head,
+  Heading,
+  Html,
+  Preview,
+  Text,
+  Section,
+} from '@react-email/components'
 
 interface AnnouncementEmailProps {
   name: string
-  organizationName: string
-  title: string
-  message: string
-  ctaLink?: string
-  ctaText?: string
+  subject: string
+  body: string
 }
 
-export function AnnouncementEmail({ name, organizationName, title, message, ctaLink, ctaText = "Learn More" }: AnnouncementEmailProps) {
-  return (
-    <BaseEmail previewText={`Announcement from ${organizationName}: ${title}`} title={title}>
-      <Heading className="text-xl font-semibold text-gray-900 m-0 mb-4">
-        {title}
-      </Heading>
-      
-      <Text className="text-gray-600">Hello {name},</Text>
-      
-      <Text className="text-gray-600">
-        <strong>{organizationName}</strong> has posted a new announcement:
-      </Text>
-      
-      <Section className="bg-gray-100 p-4 rounded my-6 whitespace-pre-wrap">
-        <Text className="text-gray-600">{message}</Text>
-      </Section>
-      
-      {ctaLink && (
-        <Section className="text-center my-8">
-          <Button href={ctaLink} className="bg-blue-600 text-white px-6 py-3 rounded-md font-medium no-underline">
-            {ctaText}
-          </Button>
+export const AnnouncementEmail = ({ name, subject, body }: AnnouncementEmailProps) => (
+  <Html>
+    <Head />
+    <Preview>{subject}</Preview>
+    <Body style={main}>
+      <Container style={container}>
+        <Heading style={h1}>{subject}</Heading>
+        <Text style={text}>Hi {name},</Text>
+        <Section style={content}>
+          <div dangerouslySetInnerHTML={{ __html: body }} />
         </Section>
-      )}
-      
-      <Text className="text-gray-500 text-sm">
-        You can manage your notification preferences in your account settings.
-      </Text>
-    </BaseEmail>
-  )
+        <Text style={footer}>
+          This message was sent from MembersHome.
+        </Text>
+      </Container>
+    </Body>
+  </Html>
+)
+
+const main = {
+  backgroundColor: '#f6f9fc',
+  fontFamily: '-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Ubuntu,sans-serif',
+}
+
+const container = {
+  backgroundColor: '#ffffff',
+  margin: '0 auto',
+  padding: '40px 20px',
+  maxWidth: '600px',
+  borderRadius: '8px',
+}
+
+const h1 = {
+  color: '#1a1a1a',
+  fontSize: '24px',
+  fontWeight: 'bold',
+  margin: '0 0 20px',
+  padding: '0',
+}
+
+const text = {
+  color: '#333',
+  fontSize: '16px',
+  lineHeight: '26px',
+  margin: '16px 0',
+}
+
+const content = {
+  margin: '24px 0',
+}
+
+const footer = {
+  color: '#6b7280',
+  fontSize: '13px',
+  marginTop: '32px',
+  paddingTop: '16px',
+  borderTop: '1px solid #e5e7eb',
 }

@@ -1,270 +1,271 @@
-"use client"
+// app/org/[orgSlug]/houses/[houseSlug]/applications/page.tsx
+import { prisma } from '@/lib/prisma'
+import Link from 'next/link'
+import { 
+  FileText, 
+  Search,
+  Filter,
+  Clock,
+  CheckCircle,
+  XCircle,
+  AlertCircle,
+  CreditCard,
+  Eye,
+  ChevronRight,
+} from 'lucide-react'
 
-import { useParams } from "next/navigation"
-import { useEffect, useState } from "react"
-import { format } from "date-fns"
-import { Toast, useToast } from "@/components/ui/toast"
-
-interface Application {
-  id: string
-  firstName: string
-  lastName: string
-  email: string
-  phone: string | null
-  company: string | null
-  position: string | null
-  status: string
-  notes: string | null
-  createdAt: string
-  membershipPlan: {
-    name: string
+interface ApplicationsPageProps {
+  params: {
+    orgSlug: string
+    houseSlug: string
+  }
+  searchParams: {
+    status?: string
+    search?: string
+    page?: string
   }
 }
 
-export default function HouseApplicationsPage() {
-  const params = useParams()
-  const orgSlug = params.orgSlug as string
-  const houseSlug = params.houseSlug as string
-  const { toast, showToast, hideToast } = useToast()
-  const [applications, setApplications] = useState<Application[]>([])
-  const [loading, setLoading] = useState(true)
-  const [selectedApp, setSelectedApp] = useState<Application | null>(null)
-  const [rejectionReason, setRejectionReason] = useState("")
-  const [filter, setFilter] = useState("all")
+export default async function ApplicationsPage({ params, searchParams }: ApplicationsPageProps) {
+  const page = parseInt(searchParams.page || '1')
+  const limit = 10
+  const status = searchParams.status
+  const search = searchParams.search || ''
 
-  useEffect(() => {
-    fetchApplications()
-  }, [orgSlug, houseSlug, filter])
-
-  const fetchApplications = async () => {
-    try {
-      const response = await fetch(`/api/org/${orgSlug}/houses/${houseSlug}/applications?status=${filter}`)
-      const data = await response.json()
-      setApplications(data)
-    } catch (error) {
-      console.error("Failed to fetch applications:", error)
-      showToast("Failed to fetch applications", "error")
-    } finally {
-      setLoading(false)
+  const house = await prisma.house.findFirst({
+    where: {
+      slug: params.houseSlug,
+      organization: { slug: params.orgSlug }
+    },
+    include: {
+      organization: true,
     }
+  })
+
+  if (!house) {
+    return <div>House not found</div>
   }
 
-  const updateApplicationStatus = async (applicationId: string, status: string, rejectionReason?: string) => {
-    try {
-      const response = await fetch(`/api/org/${orgSlug}/houses/${houseSlug}/applications/${applicationId}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status, rejectionReason }),
-      })
+  const where: any = {
+    houseId: house.id
+  }
 
-      if (response.ok) {
-        showToast(`Application ${status.toLowerCase()} successfully!`, "success")
-        setSelectedApp(null)
-        setRejectionReason("")
-        fetchApplications()
-      } else {
-        const error = await response.json()
-        showToast(error.error || "Failed to update application", "error")
+  if (status) where.status = status
+  if (search) {
+    where.OR = [
+      { firstName: { contains: search, mode: 'insensitive' } },
+      { lastName: { contains: search, mode: 'insensitive' } },
+      { email: { contains: search, mode: 'insensitive' } },
+    ]
+  }
+
+  const [applications, total] = await Promise.all([
+    prisma.membershipApplication.findMany({
+      where,
+      skip: (page - 1) * limit,
+      take: limit,
+      orderBy: { createdAt: 'desc' },
+      include: {
+        membershipPlan: {
+          select: {
+            id: true,
+            name: true,
+            type: true,
+          }
+        },
+        selectedPrice: {
+          select: {
+            amount: true,
+            currency: true,
+            billingFrequency: true,
+          }
+        },
+        reviewer: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          }
+        }
       }
-    } catch (error) {
-      showToast("Failed to update application", "error")
-    }
-  }
+    }),
+    prisma.membershipApplication.count({ where })
+  ])
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-      </div>
-    )
+  const statusCounts = await prisma.membershipApplication.groupBy({
+    by: ['status'],
+    where: { houseId: house.id },
+    _count: true,
+  })
+
+  const totalPages = Math.ceil(total / limit)
+
+  const statusConfig = {
+    PENDING: { label: 'Pending', color: 'bg-yellow-100 text-yellow-800', icon: Clock },
+    REVIEWING: { label: 'Reviewing', color: 'bg-blue-100 text-blue-800', icon: AlertCircle },
+    AWAITING_PAYMENT: { label: 'Awaiting Payment', color: 'bg-purple-100 text-purple-800', icon: CreditCard },
+    APPROVED: { label: 'Approved', color: 'bg-green-100 text-green-800', icon: CheckCircle },
+    REJECTED: { label: 'Rejected', color: 'bg-red-100 text-red-800', icon: XCircle },
+    WAITLIST: { label: 'Waitlist', color: 'bg-orange-100 text-orange-800', icon: Clock },
+    CANCELLED: { label: 'Cancelled', color: 'bg-gray-100 text-gray-800', icon: XCircle },
   }
 
   return (
-    <div>
-      {toast && <Toast message={toast.message} type={toast.type} onClose={hideToast} />}
-
-      <div className="flex justify-between items-center mb-8">
-        <h1 className="text-2xl font-bold text-gray-900">Membership Applications</h1>
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Membership Applications</h1>
+          <p className="text-sm text-gray-500 mt-1">
+            {house.name} • {total} total applications
+          </p>
+        </div>
       </div>
 
-      {/* Filters */}
-      <div className="bg-white rounded-lg shadow mb-6 p-4">
-        <div className="flex gap-4">
-          <select
-            value={filter}
-            onChange={(e) => setFilter(e.target.value)}
-            className="px-3 py-2 border rounded-md focus:ring-blue-500 focus:border-blue-500"
+      {/* Status Filters */}
+      <div className="bg-white rounded-xl border border-gray-200 p-4">
+        <div className="flex flex-wrap items-center gap-2">
+          <Link
+            href={`/org/${params.orgSlug}/houses/${params.houseSlug}/applications`}
+            className={`px-3 py-1.5 text-sm font-medium rounded-lg transition ${
+              !status ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+            }`}
           >
-            <option value="all">All Applications</option>
-            <option value="PENDING">Pending</option>
-            <option value="REVIEWING">Under Review</option>
-            <option value="APPROVED">Approved</option>
-            <option value="REJECTED">Rejected</option>
-          </select>
+            All ({total})
+          </Link>
+          {statusCounts.map((s) => {
+            const config = statusConfig[s.status as keyof typeof statusConfig]
+            return (
+              <Link
+                key={s.status}
+                href={`?status=${s.status}`}
+                className={`px-3 py-1.5 text-sm font-medium rounded-lg transition ${
+                  status === s.status ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
+              >
+                {config?.label || s.status} ({s._count})
+              </Link>
+            )
+          })}
         </div>
+
+        {/* Search */}
+        <form className="mt-4">
+          <div className="relative max-w-md">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+            <input
+              type="text"
+              name="search"
+              defaultValue={search}
+              placeholder="Search by name or email..."
+              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            />
+          </div>
+        </form>
       </div>
 
       {/* Applications Table */}
-      <div className="bg-white rounded-lg shadow overflow-hidden">
+      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
         {applications.length === 0 ? (
-          <div className="text-center py-12">
-            <p className="text-gray-500">No applications found</p>
+          <div className="px-5 py-12 text-center">
+            <FileText className="h-12 w-12 text-gray-400 mx-auto mb-3" />
+            <h3 className="text-lg font-medium text-gray-900 mb-2">No applications found</h3>
+            <p className="text-gray-500">
+              {status ? `No ${status.toLowerCase()} applications` : 'No applications yet'}
+            </p>
           </div>
         ) : (
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Applicant</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Plan</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Applied</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {applications.map((app) => (
-                <tr key={app.id}>
-                  <td className="px-6 py-4">
-                    <div>
-                      <p className="text-sm font-medium text-gray-900">{app.firstName} {app.lastName}</p>
-                      <p className="text-sm text-gray-500">{app.email}</p>
-                      {app.company && <p className="text-xs text-gray-400">{app.company}</p>}
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 text-sm text-gray-500">
-                    {app.membershipPlan?.name || "N/A"}
-                  </td>
-                  <td className="px-6 py-4 text-sm text-gray-500">
-                    {format(new Date(app.createdAt), "MMM d, yyyy")}
-                  </td>
-                  <td className="px-6 py-4">
-                    <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                      app.status === "APPROVED" ? "bg-green-100 text-green-800" :
-                      app.status === "REJECTED" ? "bg-red-100 text-red-800" :
-                      app.status === "REVIEWING" ? "bg-blue-100 text-blue-800" :
-                      "bg-yellow-100 text-yellow-800"
-                    }`}>
-                      {app.status}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 text-sm">
-                    <button
-                      onClick={() => setSelectedApp(app)}
-                      className="text-blue-600 hover:text-blue-900 mr-3"
-                    >
-                      Review
-                    </button>
-                  </td>
+          <>
+            <table className="w-full">
+              <thead className="bg-gray-50 border-b border-gray-200">
+                <tr>
+                  <th className="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Applicant</th>
+                  <th className="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Plan</th>
+                  <th className="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                  <th className="px-5 py-3 text-left text-xs font-medium text-gray-500 uppercase">Submitted</th>
+                  <th className="px-5 py-3 text-right text-xs font-medium text-gray-500 uppercase">Actions</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {applications.map((application) => {
+                  const config = statusConfig[application.status as keyof typeof statusConfig]
+                  const StatusIcon = config?.icon || Clock
+                  
+                  return (
+                    <tr key={application.id} className="hover:bg-gray-50">
+                      <td className="px-5 py-4">
+                        <div>
+                          <p className="text-sm font-medium text-gray-900">
+                            {application.firstName} {application.lastName}
+                          </p>
+                          <p className="text-xs text-gray-500">{application.email}</p>
+                          {application.phone && (
+                            <p className="text-xs text-gray-400">{application.phone}</p>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-5 py-4">
+                        <p className="text-sm text-gray-900">{application.membershipPlan?.name || 'N/A'}</p>
+                        {application.selectedPrice && (
+                          <p className="text-xs text-gray-500">
+                            {application.selectedPrice.currency} {application.selectedPrice.amount} / {application.selectedPrice.billingFrequency.toLowerCase().replace('_', ' ')}
+                          </p>
+                        )}
+                      </td>
+                      <td className="px-5 py-4">
+                        <span className={`inline-flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-full ${config?.color || 'bg-gray-100'}`}>
+                          <StatusIcon className="h-3 w-3" />
+                          {config?.label || application.status}
+                        </span>
+                      </td>
+                      <td className="px-5 py-4 text-sm text-gray-500">
+                        {new Date(application.createdAt).toLocaleDateString()}
+                      </td>
+                      <td className="px-5 py-4 text-right">
+                        <Link
+                          href={`/org/${params.orgSlug}/houses/${params.houseSlug}/applications/${application.id}`}
+                          className="inline-flex items-center gap-1 text-sm text-blue-600 hover:text-blue-700"
+                        >
+                          <Eye className="h-4 w-4" />
+                          Review
+                          <ChevronRight className="h-4 w-4" />
+                        </Link>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
 
-      {/* Review Modal */}
-      {selectedApp && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-            <h3 className="text-lg font-semibold mb-4">Review Application</h3>
-            
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-500">First Name</label>
-                  <p className="text-gray-900">{selectedApp.firstName}</p>
+            {/* Pagination */}
+            {totalPages > 1 && (
+              <div className="px-5 py-4 border-t border-gray-200 flex items-center justify-between">
+                <p className="text-sm text-gray-500">
+                  Showing {(page - 1) * limit + 1} to {Math.min(page * limit, total)} of {total} applications
+                </p>
+                <div className="flex gap-2">
+                  {page > 1 && (
+                    <Link
+                      href={`?page=${page - 1}${status ? `&status=${status}` : ''}${search ? `&search=${search}` : ''}`}
+                      className="px-3 py-1.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
+                    >
+                      Previous
+                    </Link>
+                  )}
+                  {page < totalPages && (
+                    <Link
+                      href={`?page=${page + 1}${status ? `&status=${status}` : ''}${search ? `&search=${search}` : ''}`}
+                      className="px-3 py-1.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
+                    >
+                      Next
+                    </Link>
+                  )}
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-500">Last Name</label>
-                  <p className="text-gray-900">{selectedApp.lastName}</p>
-                </div>
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-500">Email</label>
-                <p className="text-gray-900">{selectedApp.email}</p>
-              </div>
-              
-              {selectedApp.phone && (
-                <div>
-                  <label className="block text-sm font-medium text-gray-500">Phone</label>
-                  <p className="text-gray-900">{selectedApp.phone}</p>
-                </div>
-              )}
-              
-              {selectedApp.company && (
-                <div>
-                  <label className="block text-sm font-medium text-gray-500">Company</label>
-                  <p className="text-gray-900">{selectedApp.company}</p>
-                </div>
-              )}
-              
-              {selectedApp.position && (
-                <div>
-                  <label className="block text-sm font-medium text-gray-500">Position</label>
-                  <p className="text-gray-900">{selectedApp.position}</p>
-                </div>
-              )}
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-500">Membership Plan</label>
-                <p className="text-gray-900">{selectedApp.membershipPlan?.name}</p>
-              </div>
-              
-              {selectedApp.notes && (
-                <div>
-                  <label className="block text-sm font-medium text-gray-500">Additional Notes</label>
-                  <p className="text-gray-900">{selectedApp.notes}</p>
-                </div>
-              )}
-            </div>
-
-            {selectedApp.status === "PENDING" || selectedApp.status === "REVIEWING" ? (
-              <div className="mt-6 space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Rejection Reason (if rejecting)</label>
-                  <textarea
-                    value={rejectionReason}
-                    onChange={(e) => setRejectionReason(e.target.value)}
-                    rows={3}
-                    className="w-full px-3 py-2 border rounded-md focus:ring-blue-500 focus:border-blue-500"
-                    placeholder="Optional reason for rejection"
-                  />
-                </div>
-                <div className="flex justify-end space-x-3">
-                  <button
-                    onClick={() => updateApplicationStatus(selectedApp.id, "REVIEWING")}
-                    className="px-4 py-2 border border-blue-600 text-blue-600 rounded-md hover:bg-blue-50"
-                  >
-                    Mark as Reviewing
-                  </button>
-                  <button
-                    onClick={() => updateApplicationStatus(selectedApp.id, "APPROVED")}
-                    className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700"
-                  >
-                    Approve
-                  </button>
-                  <button
-                    onClick={() => updateApplicationStatus(selectedApp.id, "REJECTED", rejectionReason)}
-                    className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700"
-                  >
-                    Reject
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <div className="flex justify-end mt-6">
-                <button
-                  onClick={() => setSelectedApp(null)}
-                  className="px-4 py-2 border rounded-md text-gray-700 hover:bg-gray-50"
-                >
-                  Close
-                </button>
               </div>
             )}
-          </div>
-        </div>
-      )}
+          </>
+        )}
+      </div>
     </div>
   )
 }

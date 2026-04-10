@@ -1,303 +1,450 @@
-"use client"
+// app/(platform)/platform/organizations/create/page.tsx
+'use client'
 
-import { useState } from "react"
-import { useRouter } from "next/navigation"
-import Link from "next/link"
-import { Toast, useToast } from "@/components/ui/toast"
+import { useState } from 'react'
+import { useRouter } from 'next/navigation'
+import { useForm, useFieldArray } from 'react-hook-form'
+import { zodResolver } from '@hookform/resolvers/zod'
+import { z } from 'zod'
+import Link from 'next/link'
+import toast from 'react-hot-toast'
+import { ArrowLeft, Building2, Globe, Mail, Home, Plus, Trash2 } from 'lucide-react'
 
-interface House {
-  name: string
-  slug: string
-  description: string
-}
+const houseSchema = z.object({
+  name: z.string().min(2, 'House name must be at least 2 characters'),
+  slug: z.string()
+    .min(2, 'Slug must be at least 2 characters')
+    .regex(/^[a-z0-9-]+$/, 'Slug can only contain lowercase letters, numbers, and hyphens'),
+  description: z.string().optional(),
+  isPrivate: z.boolean().default(false),
+})
+
+const organizationSchema = z.object({
+  name: z.string().min(2, 'Organization name must be at least 2 characters'),
+  slug: z.string()
+    .min(2, 'Slug must be at least 2 characters')
+    .regex(/^[a-z0-9-]+$/, 'Slug can only contain lowercase letters, numbers, and hyphens'),
+  description: z.string().optional(),
+  plan: z.enum(['FREE', 'STARTER', 'PROFESSIONAL', 'ENTERPRISE']),
+  billingEmail: z.string().email('Invalid email address').optional().or(z.literal('')),
+  website: z.string().url('Invalid URL').optional().or(z.literal('')),
+  ownerEmail: z.string().email('Invalid owner email address'),
+  ownerName: z.string().min(2, 'Owner name must be at least 2 characters'),
+  houses: z.array(houseSchema).min(1, 'At least one house is required'),
+})
+
+type OrganizationForm = z.infer<typeof organizationSchema>
 
 export default function CreateOrganizationPage() {
   const router = useRouter()
-  const { toast, showToast, hideToast } = useToast()
-  const [loading, setLoading] = useState(false)
-  const [formData, setFormData] = useState({
-    name: "",
-    slug: "",
-    description: "",
-    ownerEmail: "",
-    plan: "FREE",
-  })
+  const [isLoading, setIsLoading] = useState(false)
   
-  const [houses, setHouses] = useState<House[]>([
-    { name: "", slug: "", description: "" }
-  ])
+  const {
+    register,
+    handleSubmit,
+    watch,
+    setValue,
+    control,
+    formState: { errors },
+  } = useForm<OrganizationForm>({
+    resolver: zodResolver(organizationSchema),
+    defaultValues: {
+      plan: 'FREE',
+      houses: [{
+        name: '',
+        slug: '',
+        description: '',
+        isPrivate: false,
+      }]
+    }
+  })
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
-    const { name, value } = e.target
-    setFormData(prev => ({ ...prev, [name]: value }))
-    
-    // Auto-generate slug from name
-    if (name === "name") {
-      const slug = value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")
-      setFormData(prev => ({ ...prev, slug }))
+  const { fields, append, remove } = useFieldArray({
+    control,
+    name: 'houses',
+  })
+
+  const orgName = watch('name')
+
+  const generateOrgSlug = () => {
+    if (orgName) {
+      const slug = orgName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+      setValue('slug', slug)
     }
   }
 
-  const handleHouseChange = (index: number, field: keyof House, value: string) => {
-    const updatedHouses = [...houses]
-    updatedHouses[index][field] = value
-    
-    // Auto-generate house slug from name
-    if (field === "name") {
-      updatedHouses[index].slug = value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")
+  const generateHouseSlug = (index: number) => {
+    const houseName = watch(`houses.${index}.name`)
+    if (houseName) {
+      const slug = houseName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+      setValue(`houses.${index}.slug`, slug)
     }
-    
-    setHouses(updatedHouses)
   }
 
   const addHouse = () => {
-    setHouses([...houses, { name: "", slug: "", description: "" }])
+    append({
+      name: '',
+      slug: '',
+      description: '',
+      isPrivate: false,
+    })
   }
 
-  const removeHouse = (index: number) => {
-    if (houses.length === 1) {
-      showToast("Organization must have at least one house", "error")
-      return
-    }
-    const updatedHouses = houses.filter((_, i) => i !== index)
-    setHouses(updatedHouses)
-  }
-
-  const validateHouses = () => {
-    for (const house of houses) {
-      if (!house.name.trim()) {
-        showToast("All houses must have a name", "error")
-        return false
-      }
-      if (!house.slug.trim()) {
-        showToast("All houses must have a slug", "error")
-        return false
-      }
-    }
-    return true
-  }
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
+  const onSubmit = async (data: OrganizationForm) => {
+    setIsLoading(true)
     
-    if (!validateHouses()) {
-      return
-    }
-    
-    if (!formData.ownerEmail) {
-      showToast("Owner email is required", "error")
-      return
-    }
-
-    setLoading(true)
-
     try {
-      const response = await fetch("/api/platform/organizations", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+      // First create the organization with the first house as default
+      const response = await fetch('/api/platform/organizations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          ...formData,
-          houses: houses.filter(h => h.name.trim() && h.slug.trim())
+          name: data.name,
+          slug: data.slug,
+          description: data.description,
+          plan: data.plan,
+          billingEmail: data.billingEmail,
+          website: data.website,
+          ownerEmail: data.ownerEmail,
+          ownerName: data.ownerName,
+          defaultHouseName: data.houses[0].name,
         }),
       })
 
-      const data = await response.json()
+      const result = await response.json()
 
       if (!response.ok) {
-        throw new Error(data.error || "Failed to create organization")
+        toast.error(result.error || 'Failed to create organization')
+        return
       }
 
-      showToast(`Organization "${formData.name}" created with ${houses.length} house(s)! Invitation sent to ${formData.ownerEmail}`, "success")
+      // If there are more houses, create them
+      if (data.houses.length > 1) {
+        const orgId = result.organization.id
+        
+        // Create remaining houses (owner becomes default manager)
+        for (let i = 1; i < data.houses.length; i++) {
+          const house = data.houses[i]
+          await fetch(`/api/platform/organizations/${orgId}/houses`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              ...house,
+              managerEmail: data.ownerEmail,
+              managerName: data.ownerName,
+            }),
+          })
+        }
+        
+        toast.success(`Organization created with ${data.houses.length} houses!`)
+      } else {
+        toast.success('Organization and house created successfully!')
+      }
       
-      setTimeout(() => {
-        router.push("/platform/organizations?created=true")
-      }, 1500)
-    } catch (error: any) {
-      showToast(error.message, "error")
-      setLoading(false)
+      router.push('/platform/organizations')
+      router.refresh()
+    } catch (error) {
+      toast.error('Something went wrong')
+    } finally {
+      setIsLoading(false)
     }
   }
 
   return (
-    <div>
-      {toast && (
-        <Toast message={toast.message} type={toast.type} onClose={hideToast} />
-      )}
-
-      <div className="mb-8">
-        <Link href="/platform/organizations" className="text-blue-600 hover:text-blue-900 text-sm mb-2 inline-block">
-          ← Back to Organizations
+    <div className="max-w-4xl mx-auto">
+      <div className="mb-6">
+        <Link 
+          href="/platform/organizations"
+          className="inline-flex items-center gap-2 text-sm text-gray-500 hover:text-gray-700"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          Back to organizations
         </Link>
-        <h1 className="text-2xl font-bold text-gray-900">Create New Organization</h1>
-        <p className="text-gray-500">Create an organization with at least one house and invite the owner</p>
       </div>
 
-      <form onSubmit={handleSubmit} className="bg-white rounded-lg shadow p-6 max-w-3xl">
-        <div className="space-y-6">
-          {/* Organization Details */}
-          <div>
-            <h2 className="text-lg font-semibold text-gray-900 mb-4">Organization Details</h2>
-            <div className="space-y-4">
-              <div>
-                <label htmlFor="name" className="block text-sm font-medium text-gray-700">
+      <div className="bg-white rounded-xl border border-gray-200 p-6">
+        <div className="mb-6">
+          <h1 className="text-2xl font-bold text-gray-900">Create Organization</h1>
+          <p className="text-sm text-gray-500 mt-1">
+            Add a new organization to the platform. Create one or more houses.
+          </p>
+        </div>
+
+        <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+          {/* Organization Details Section */}
+          <div className="space-y-4">
+            <h2 className="text-lg font-semibold text-gray-900 border-b pb-2">
+              Organization Details
+            </h2>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="md:col-span-2">
+                <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-1.5">
                   Organization Name *
                 </label>
-                <input
-                  type="text"
-                  id="name"
-                  name="name"
-                  required
-                  value={formData.name}
-                  onChange={handleChange}
-                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                  placeholder="Acme Inc"
-                />
-              </div>
-
-              <div>
-                <label htmlFor="slug" className="block text-sm font-medium text-gray-700">
-                  Organization Slug (URL) *
-                </label>
-                <div className="mt-1 flex rounded-md shadow-sm">
-                  <span className="inline-flex items-center px-3 rounded-l-md border border-r-0 border-gray-300 bg-gray-50 text-gray-500 text-sm">
-                    membershome.com/org/
-                  </span>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <Building2 className="h-4 w-4 text-gray-400" />
+                  </div>
                   <input
+                    {...register('name')}
                     type="text"
-                    id="slug"
-                    name="slug"
-                    required
-                    value={formData.slug}
-                    onChange={handleChange}
-                    className="flex-1 block w-full px-3 py-2 border border-gray-300 rounded-r-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                    placeholder="acme"
+                    onChange={(e) => {
+                      register('name').onChange(e)
+                      generateOrgSlug()
+                    }}
+                    className="block w-full pl-10 pr-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="Acme Inc."
                   />
                 </div>
-                <p className="mt-1 text-xs text-gray-500">Only lowercase letters, numbers, and hyphens</p>
+                {errors.name && (
+                  <p className="mt-1.5 text-sm text-red-600">{errors.name.message}</p>
+                )}
               </div>
 
-              <div>
-                <label htmlFor="description" className="block text-sm font-medium text-gray-700">
-                  Organization Description
+              <div className="md:col-span-2">
+                <label htmlFor="slug" className="block text-sm font-medium text-gray-700 mb-1.5">
+                  Slug *
+                </label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <Globe className="h-4 w-4 text-gray-400" />
+                  </div>
+                  <input
+                    {...register('slug')}
+                    type="text"
+                    className="block w-full pl-10 pr-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="acme-inc"
+                  />
+                </div>
+                <p className="mt-1 text-xs text-gray-500">
+                  URL: {process.env.NEXT_PUBLIC_APP_URL}/org/{watch('slug') || 'your-org'}
+                </p>
+                {errors.slug && (
+                  <p className="mt-1.5 text-sm text-red-600">{errors.slug.message}</p>
+                )}
+              </div>
+
+              <div className="md:col-span-2">
+                <label htmlFor="description" className="block text-sm font-medium text-gray-700 mb-1.5">
+                  Description (Optional)
                 </label>
                 <textarea
-                  id="description"
-                  name="description"
+                  {...register('description')}
                   rows={3}
-                  value={formData.description}
-                  onChange={handleChange}
-                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                  placeholder="Brief description of the organization"
+                  className="block w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="Brief description of the organization..."
                 />
               </div>
 
               <div>
-                <label htmlFor="ownerEmail" className="block text-sm font-medium text-gray-700">
-                  Owner Email *
-                </label>
-                <input
-                  type="email"
-                  id="ownerEmail"
-                  name="ownerEmail"
-                  required
-                  value={formData.ownerEmail}
-                  onChange={handleChange}
-                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                  placeholder="owner@example.com"
-                />
-                <p className="mt-1 text-xs text-gray-500">
-                  This user will be invited as the organization owner. They will receive an email to set up their account.
-                </p>
-              </div>
-
-              <div>
-                <label htmlFor="plan" className="block text-sm font-medium text-gray-700">
-                  Plan
+                <label htmlFor="plan" className="block text-sm font-medium text-gray-700 mb-1.5">
+                  Plan *
                 </label>
                 <select
-                  id="plan"
-                  name="plan"
-                  value={formData.plan}
-                  onChange={handleChange}
-                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                  {...register('plan')}
+                  className="block w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 >
                   <option value="FREE">Free</option>
-                  <option value="STARTER">Starter ($49/month)</option>
-                  <option value="PROFESSIONAL">Professional ($99/month)</option>
-                  <option value="ENTERPRISE">Enterprise (Custom)</option>
+                  <option value="STARTER">Starter</option>
+                  <option value="PROFESSIONAL">Professional</option>
+                  <option value="ENTERPRISE">Enterprise</option>
                 </select>
+              </div>
+
+              <div>
+                <label htmlFor="website" className="block text-sm font-medium text-gray-700 mb-1.5">
+                  Website (Optional)
+                </label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <Globe className="h-4 w-4 text-gray-400" />
+                  </div>
+                  <input
+                    {...register('website')}
+                    type="url"
+                    className="block w-full pl-10 pr-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="https://acme.com"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Owner Details Section */}
+          <div className="space-y-4">
+            <h2 className="text-lg font-semibold text-gray-900 border-b pb-2">
+              Organization Owner
+            </h2>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label htmlFor="ownerName" className="block text-sm font-medium text-gray-700 mb-1.5">
+                  Owner Name *
+                </label>
+                <input
+                  {...register('ownerName')}
+                  type="text"
+                  className="block w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="John Doe"
+                />
+                {errors.ownerName && (
+                  <p className="mt-1.5 text-sm text-red-600">{errors.ownerName.message}</p>
+                )}
+              </div>
+
+              <div>
+                <label htmlFor="ownerEmail" className="block text-sm font-medium text-gray-700 mb-1.5">
+                  Owner Email *
+                </label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <Mail className="h-4 w-4 text-gray-400" />
+                  </div>
+                  <input
+                    {...register('ownerEmail')}
+                    type="email"
+                    className="block w-full pl-10 pr-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="owner@acme.com"
+                  />
+                </div>
+                {errors.ownerEmail && (
+                  <p className="mt-1.5 text-sm text-red-600">{errors.ownerEmail.message}</p>
+                )}
+              </div>
+
+              <div className="md:col-span-2">
+                <label htmlFor="billingEmail" className="block text-sm font-medium text-gray-700 mb-1.5">
+                  Billing Email (Optional)
+                </label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <Mail className="h-4 w-4 text-gray-400" />
+                  </div>
+                  <input
+                    {...register('billingEmail')}
+                    type="email"
+                    className="block w-full pl-10 pr-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="billing@acme.com"
+                  />
+                </div>
               </div>
             </div>
           </div>
 
           {/* Houses Section */}
-          <div className="border-t pt-6">
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-lg font-semibold text-gray-900">Houses / Chapters *</h2>
+          <div className="space-y-4">
+            <div className="flex items-center justify-between border-b pb-2">
+              <h2 className="text-lg font-semibold text-gray-900">
+                Houses
+              </h2>
               <button
                 type="button"
                 onClick={addHouse}
-                className="px-3 py-1 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700"
+                className="inline-flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition"
               >
-                + Add House
+                <Plus className="h-4 w-4" />
+                Add Another House
               </button>
             </div>
-            <p className="text-sm text-gray-500 mb-4">At least one house is required. Houses represent chapters, teams, or locations within your organization.</p>
             
-            <div className="space-y-4">
-              {houses.map((house, index) => (
-                <div key={index} className="border border-gray-200 rounded-lg p-4">
-                  <div className="flex justify-between items-start mb-3">
-                    <h3 className="text-md font-medium text-gray-700">House {index + 1}</h3>
-                    {houses.length > 1 && (
-                      <button
-                        type="button"
-                        onClick={() => removeHouse(index)}
-                        className="text-red-600 hover:text-red-800 text-sm"
-                      >
-                        Remove
-                      </button>
-                    )}
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+              <p className="text-sm text-blue-800">
+                <strong>Note:</strong> Create one or more houses for this organization. 
+                The organization owner will be assigned as the manager of all houses.
+              </p>
+            </div>
+
+            {errors.houses && (
+              <p className="text-sm text-red-600">{errors.houses.message}</p>
+            )}
+
+            <div className="space-y-6">
+              {fields.map((field, index) => (
+                <div key={field.id} className="relative bg-gray-50 rounded-lg p-5 border border-gray-200">
+                  <div className="absolute -top-3 left-4 px-3 py-1 bg-blue-100 text-blue-800 text-xs font-medium rounded-full">
+                    {index === 0 ? 'Primary House' : `House ${index + 1}`}
                   </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  
+                  {index > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => remove(index)}
+                      className="absolute -top-3 right-4 p-1.5 bg-red-100 text-red-600 rounded-full hover:bg-red-200 transition"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                      <label className="block text-sm font-medium text-gray-700 mb-1.5">
                         House Name *
                       </label>
-                      <input
-                        type="text"
-                        value={house.name}
-                        onChange={(e) => handleHouseChange(index, "name", e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                        placeholder="e.g., Kenya Chapter"
-                        required
-                      />
+                      <div className="relative">
+                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                          <Home className="h-4 w-4 text-gray-400" />
+                        </div>
+                        <input
+                          {...register(`houses.${index}.name`)}
+                          type="text"
+                          onChange={(e) => {
+                            register(`houses.${index}.name`).onChange(e)
+                            generateHouseSlug(index)
+                          }}
+                          className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          placeholder={index === 0 ? "Main House" : "Engineering Team"}
+                        />
+                      </div>
+                      {errors.houses?.[index]?.name && (
+                        <p className="mt-1 text-xs text-red-600">{errors.houses[index]?.name?.message}</p>
+                      )}
                     </div>
+
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        House Slug *
+                      <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                        Slug *
                       </label>
-                      <input
-                        type="text"
-                        value={house.slug}
-                        onChange={(e) => handleHouseChange(index, "slug", e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                        placeholder="kenya-chapter"
-                        required
-                      />
-                      <p className="mt-1 text-xs text-gray-500">Only lowercase letters, numbers, and hyphens</p>
+                      <div className="relative">
+                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                          <Globe className="h-4 w-4 text-gray-400" />
+                        </div>
+                        <input
+                          {...register(`houses.${index}.slug`)}
+                          type="text"
+                          className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          placeholder={index === 0 ? "main" : "engineering"}
+                        />
+                      </div>
+                      {errors.houses?.[index]?.slug && (
+                        <p className="mt-1 text-xs text-red-600">{errors.houses[index]?.slug?.message}</p>
+                      )}
                     </div>
+
                     <div className="md:col-span-2">
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        House Description (Optional)
+                      <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                        Description (Optional)
                       </label>
                       <textarea
-                        value={house.description}
-                        onChange={(e) => handleHouseChange(index, "description", e.target.value)}
+                        {...register(`houses.${index}.description`)}
                         rows={2}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                        placeholder="Brief description of this house/chapter"
+                        className="block w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        placeholder="Brief description of this house..."
                       />
+                    </div>
+
+                    <div className="md:col-span-2">
+                      <label className="flex items-center gap-2">
+                        <input
+                          {...register(`houses.${index}.isPrivate`)}
+                          type="checkbox"
+                          className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                        />
+                        <span className="text-sm text-gray-700">Private House</span>
+                      </label>
+                      <p className="text-xs text-gray-500 mt-1 ml-6">
+                        Private houses are only visible to members
+                      </p>
                     </div>
                   </div>
                 </div>
@@ -305,23 +452,34 @@ export default function CreateOrganizationPage() {
             </div>
           </div>
 
-          <div className="flex justify-end space-x-3 pt-4 border-t">
+          {/* Summary */}
+          <div className="bg-gray-50 rounded-lg p-4">
+            <h3 className="text-sm font-medium text-gray-900 mb-2">Summary</h3>
+            <ul className="space-y-1 text-sm text-gray-600">
+              <li>• Organization: <strong>{orgName || '—'}</strong></li>
+              <li>• Owner: <strong>{watch('ownerName') || '—'}</strong> ({watch('ownerEmail') || '—'})</li>
+              <li>• Houses: <strong>{fields.length}</strong> house{fields.length !== 1 ? 's' : ''}</li>
+              <li>• Plan: <strong>{watch('plan')}</strong></li>
+            </ul>
+          </div>
+
+          <div className="flex justify-end gap-3 pt-6 border-t border-gray-100">
             <Link
               href="/platform/organizations"
-              className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
+              className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition"
             >
               Cancel
             </Link>
             <button
               type="submit"
-              disabled={loading}
-              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              disabled={isLoading}
+              className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
             >
-              {loading ? "Creating..." : "Create Organization"}
+              {isLoading ? 'Creating...' : `Create Organization & ${fields.length} House${fields.length !== 1 ? 's' : ''}`}
             </button>
           </div>
-        </div>
-      </form>
+        </form>
+      </div>
     </div>
   )
 }

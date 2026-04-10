@@ -1,6 +1,7 @@
-import { NextRequest, NextResponse } from "next/server"
-import bcrypt from "bcryptjs"
-import { prisma } from "@/prisma/client"
+// app/api/auth/reset-password/route.ts
+import { NextRequest, NextResponse } from 'next/server'
+import { prisma } from '@/lib/prisma'
+import bcrypt from 'bcryptjs'
 
 export async function POST(req: NextRequest) {
   try {
@@ -8,56 +9,67 @@ export async function POST(req: NextRequest) {
 
     if (!token || !password) {
       return NextResponse.json(
-        { error: "Token and password are required" },
+        { error: 'Token and password are required' },
         { status: 400 }
       )
     }
 
-    if (password.length < 8) {
+    // Validate password strength
+    if (password.length < 6) {
       return NextResponse.json(
-        { error: "Password must be at least 8 characters" },
+        { error: 'Password must be at least 6 characters' },
         { status: 400 }
       )
     }
 
-    // Find user with valid reset token
+    // Find user with token
     const user = await prisma.user.findFirst({
       where: {
         invitationToken: token,
         invitationSentAt: {
-          gt: new Date(), // Token not expired
-        }
-      }
+          gte: new Date(Date.now() - 1 * 60 * 60 * 1000), // Token valid for 1 hour
+        },
+      },
     })
 
     if (!user) {
       return NextResponse.json(
-        { error: "Invalid or expired reset token" },
+        { error: 'Invalid or expired reset token' },
         { status: 400 }
       )
     }
 
     // Hash new password
-    const hashedPassword = await bcrypt.hash(password, 10)
+    const hashedPassword = await bcrypt.hash(password, 12)
 
-    // Update user password and clear reset token
+    // Update user
     await prisma.user.update({
       where: { id: user.id },
       data: {
         passwordHash: hashedPassword,
         invitationToken: null,
-        invitationSentAt: null,
-      }
+      },
     })
 
-    return NextResponse.json(
-      { message: "Password reset successful" },
-      { status: 200 }
-    )
+    // Log password reset
+    await prisma.auditLog.create({
+      data: {
+        userId: user.id,
+        userEmail: user.email,
+        action: 'PASSWORD_RESET',
+        entityType: 'USER',
+        entityId: user.id,
+      },
+    })
+
+    return NextResponse.json({
+      success: true,
+      message: 'Password reset successfully',
+    })
   } catch (error) {
-    console.error("Password reset error:", error)
+    console.error('Reset password error:', error)
     return NextResponse.json(
-      { error: "An error occurred" },
+      { error: 'Internal server error' },
       { status: 500 }
     )
   }

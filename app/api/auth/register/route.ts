@@ -1,61 +1,75 @@
-import { NextRequest, NextResponse } from "next/server"
-import bcrypt from "bcryptjs"
-import { prisma } from "@/prisma/client"
-import { sendVerificationEmail } from "@/lib/email"
+// app/api/auth/register/route.ts
+import { NextRequest, NextResponse } from 'next/server'
+import { prisma } from '@/lib/prisma'
+import bcrypt from 'bcryptjs'
+import { sendEmail } from '@/lib/email/send'
+import crypto from 'crypto'
 
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json()
-    const { name, email, password } = body
+    const { email, password, name } = await req.json()
 
-    // Validate required fields
-    if (!email || !password) {
+    // Validate input
+    if (!email || !password || !name) {
       return NextResponse.json(
-        { error: "Missing required fields" },
+        { error: 'Missing required fields' },
         { status: 400 }
       )
     }
 
-    // Check if user already exists
+    // Check if user exists
     const existingUser = await prisma.user.findUnique({
-      where: { email }
+      where: { email },
     })
 
     if (existingUser) {
       return NextResponse.json(
-        { error: "User with this email already exists" },
+        { error: 'User already exists' },
         { status: 400 }
       )
     }
 
     // Hash password
-    const hashedPassword = await bcrypt.hash(password, 10)
+    const hashedPassword = await bcrypt.hash(password, 12)
 
-    // Create user only (no organization)
+    // Generate verification token
+    const verificationToken = crypto.randomBytes(32).toString('hex')
+    const tokenExpiry = new Date(Date.now() + 24 * 60 * 60 * 1000) // 24 hours
+
+    // Create user
     const user = await prisma.user.create({
       data: {
         email,
-        name: name || null,
         passwordHash: hashedPassword,
-        platformRole: "USER", // Regular user, not org owner yet
-      }
+        name,
+        invitationToken: verificationToken,
+        invitationSentAt: new Date(),
+      },
     })
 
     // Send verification email
-    const verificationLink = `${process.env.NEXTAUTH_URL}/verify-email?token=${user.id}`
-    await sendVerificationEmail(email, verificationLink, name || undefined)
+    const verifyUrl = `${process.env.NEXT_PUBLIC_APP_URL}/verify-email?token=${verificationToken}`
+    
+    await sendEmail({
+      to: email,
+      template: 'welcome',
+      data: {
+        name,
+        verifyUrl,
+      },
+    })
 
     return NextResponse.json(
       { 
-        message: "Registration successful. Please verify your email. You will be added to an organization by a platform admin.",
-        userId: user.id
+        success: true, 
+        message: 'Registration successful. Please check your email to verify your account.' 
       },
       { status: 201 }
     )
   } catch (error) {
-    console.error("Registration error:", error)
+    console.error('Registration error:', error)
     return NextResponse.json(
-      { error: "An error occurred during registration" },
+      { error: 'Internal server error' },
       { status: 500 }
     )
   }

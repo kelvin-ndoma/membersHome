@@ -1,7 +1,8 @@
-import { NextRequest, NextResponse } from "next/server"
-import { getServerSession } from "next-auth"
-import { authOptions } from "@/lib/auth/options"
-import { prisma } from "@/prisma/client"
+// app/api/org/[orgSlug]/houses/[houseSlug]/events/route.ts
+import { NextRequest, NextResponse } from 'next/server'
+import { getServerSession } from 'next-auth'
+import { authOptions } from '@/lib/auth/auth.config'
+import { prisma } from '@/lib/prisma'
 
 export async function GET(
   req: NextRequest,
@@ -9,67 +10,93 @@ export async function GET(
 ) {
   try {
     const session = await getServerSession(authOptions)
-    
-    if (!session?.user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+
+    if (!session) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const { orgSlug, houseSlug } = params
     const searchParams = req.nextUrl.searchParams
-    const status = searchParams.get("status")
-
-    const organization = await prisma.organization.findUnique({
-      where: { slug: orgSlug }
-    })
-
-    if (!organization) {
-      return NextResponse.json({ error: "Organization not found" }, { status: 404 })
-    }
-
-    const membership = await prisma.membership.findFirst({
-      where: {
-        userId: session.user.id,
-        organizationId: organization.id,
-        organizationRole: "ORG_OWNER",
-        status: "ACTIVE"
-      }
-    })
-
-    if (!membership) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
+    const page = parseInt(searchParams.get('page') || '1')
+    const limit = parseInt(searchParams.get('limit') || '10')
+    const status = searchParams.get('status')
+    const type = searchParams.get('type')
+    const upcoming = searchParams.get('upcoming') === 'true'
 
     const house = await prisma.house.findFirst({
       where: {
-        slug: houseSlug,
-        organizationId: organization.id
-      }
+        slug: params.houseSlug,
+        organization: { slug: params.orgSlug }
+      },
+      select: { id: true, organizationId: true }
     })
 
     if (!house) {
-      return NextResponse.json({ error: "House not found" }, { status: 404 })
+      return NextResponse.json(
+        { error: 'House not found' },
+        { status: 404 }
+      )
     }
 
-    const where: any = { houseId: house.id }
-    if (status && status !== "all") {
-      where.status = status
+    const where: any = { 
+      OR: [
+        { houseId: house.id },
+        { organizationId: house.organizationId, houseId: null }
+      ]
+    }
+    
+    if (status) where.status = status
+    if (type) where.type = type
+    if (upcoming) {
+      where.startDate = { gte: new Date() }
     }
 
-    const events = await prisma.event.findMany({
-      where,
-      include: {
-        _count: {
-          select: { rsvps: true, tickets: true }
+    const [events, total] = await Promise.all([
+      prisma.event.findMany({
+        where,
+        skip: (page - 1) * limit,
+        take: limit,
+        orderBy: { startDate: upcoming ? 'asc' : 'desc' },
+        include: {
+          _count: {
+            select: { rsvps: true }
+          },
+          rsvps: {
+            where: {
+              houseMembership: {
+                membership: { userId: session.user.id }
+              }
+            },
+            select: { status: true }
+          },
+          creator: {
+            select: { name: true, email: true }
+          },
+          house: {
+            select: { name: true, slug: true }
+          }
         }
-      },
-      orderBy: { startDate: "asc" }
-    })
+      }),
+      prisma.event.count({ where })
+    ])
 
-    return NextResponse.json(events)
+    const eventsWithUserRsvp = events.map(event => ({
+      ...event,
+      userRsvpStatus: event.rsvps[0]?.status || null,
+    }))
+
+    return NextResponse.json({
+      events: eventsWithUserRsvp,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit)
+      }
+    })
   } catch (error) {
-    console.error("Failed to fetch events:", error)
+    console.error('Get events error:', error)
     return NextResponse.json(
-      { error: "Failed to fetch events" },
+      { error: 'Internal server error' },
       { status: 500 }
     )
   }
@@ -81,81 +108,131 @@ export async function POST(
 ) {
   try {
     const session = await getServerSession(authOptions)
-    
-    if (!session?.user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
 
-    const { orgSlug, houseSlug } = params
-    const body = await req.json()
-    const { title, slug, description, imageUrl, startDate, endDate, location, onlineUrl, type, isFree, price, capacity, memberOnly } = body
-
-    if (!title || !slug || !startDate || !endDate) {
-      return NextResponse.json(
-        { error: "Missing required fields" },
-        { status: 400 }
-      )
-    }
-
-    const organization = await prisma.organization.findUnique({
-      where: { slug: orgSlug }
-    })
-
-    if (!organization) {
-      return NextResponse.json({ error: "Organization not found" }, { status: 404 })
-    }
-
-    const membership = await prisma.membership.findFirst({
-      where: {
-        userId: session.user.id,
-        organizationId: organization.id,
-        organizationRole: "ORG_OWNER",
-        status: "ACTIVE"
-      }
-    })
-
-    if (!membership) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    if (!session) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
     const house = await prisma.house.findFirst({
       where: {
-        slug: houseSlug,
-        organizationId: organization.id
+        slug: params.houseSlug,
+        organization: { slug: params.orgSlug }
+      },
+      include: {
+        members: {
+          where: {
+            membership: { userId: session.user.id },
+            role: { in: ['HOUSE_MANAGER', 'HOUSE_ADMIN', 'HOUSE_STAFF'] }
+          }
+        }
       }
     })
 
     if (!house) {
-      return NextResponse.json({ error: "House not found" }, { status: 404 })
+      return NextResponse.json(
+        { error: 'House not found' },
+        { status: 404 }
+      )
+    }
+
+    if (house.members.length === 0) {
+      return NextResponse.json(
+        { error: 'Unauthorized - Staff access required' },
+        { status: 403 }
+      )
+    }
+
+    const {
+      title,
+      slug,
+      description,
+      imageUrl,
+      startDate,
+      endDate,
+      timezone,
+      location,
+      address,
+      onlineUrl,
+      type,
+      isFree,
+      capacity,
+      price,
+      currency,
+      memberOnly,
+    } = await req.json()
+
+    if (!title || !startDate) {
+      return NextResponse.json(
+        { error: 'Title and start date are required' },
+        { status: 400 }
+      )
+    }
+
+    // Generate slug if not provided
+    const eventSlug = slug || title.toLowerCase().replace(/[^a-z0-9]+/g, '-')
+    
+    // Check if slug is unique within org
+    const existingEvent = await prisma.event.findFirst({
+      where: {
+        organizationId: house.organizationId,
+        slug: eventSlug
+      }
+    })
+
+    if (existingEvent) {
+      return NextResponse.json(
+        { error: 'Event slug already exists' },
+        { status: 400 }
+      )
     }
 
     const event = await prisma.event.create({
       data: {
         title,
-        slug,
-        description: description || null,
-        imageUrl: imageUrl || null,
+        slug: eventSlug,
+        description,
+        imageUrl,
         startDate: new Date(startDate),
-        endDate: new Date(endDate),
-        location: location || null,
-        onlineUrl: onlineUrl || null,
-        type: type || "IN_PERSON",
-        isFree: isFree ?? true,
+        endDate: endDate ? new Date(endDate) : new Date(startDate),
+        timezone: timezone || 'UTC',
+        location,
+        address,
+        onlineUrl,
+        type: type || 'IN_PERSON',
+        isFree: isFree || false,
+        capacity,
         price: price || 0,
-        capacity: capacity || null,
-        memberOnly: memberOnly ?? false,
-        status: "DRAFT",
-        organizationId: organization.id,
+        currency: currency || 'USD',
+        memberOnly: memberOnly || false,
+        status: 'PUBLISHED',
+        publishedAt: new Date(),
+        organizationId: house.organizationId,
         houseId: house.id,
         createdBy: session.user.id,
       }
     })
 
-    return NextResponse.json(event, { status: 201 })
+    await prisma.auditLog.create({
+      data: {
+        userId: session.user.id,
+        userEmail: session.user.email,
+        action: 'EVENT_CREATED',
+        entityType: 'EVENT',
+        entityId: event.id,
+        organizationId: house.organizationId,
+        houseId: house.id,
+        metadata: { title, startDate }
+      }
+    })
+
+    return NextResponse.json({
+      success: true,
+      event
+    }, { status: 201 })
   } catch (error) {
-    console.error("Failed to create event:", error)
+    console.error('Create event error:', error)
     return NextResponse.json(
-      { error: "Failed to create event" },
+      { error: 'Internal server error' },
       { status: 500 }
     )
   }

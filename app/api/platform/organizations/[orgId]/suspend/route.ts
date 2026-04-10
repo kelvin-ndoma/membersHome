@@ -1,7 +1,8 @@
-import { NextRequest, NextResponse } from "next/server"
-import { getServerSession } from "next-auth"
-import { authOptions } from "@/lib/auth/options"
-import { prisma } from "@/prisma/client"
+// app/api/platform/organizations/[orgId]/suspend/route.ts
+import { NextRequest, NextResponse } from 'next/server'
+import { getServerSession } from 'next-auth'
+import { authOptions } from '@/lib/auth/auth.config'
+import { prisma } from '@/lib/prisma'
 
 export async function POST(
   req: NextRequest,
@@ -9,22 +10,35 @@ export async function POST(
 ) {
   try {
     const session = await getServerSession(authOptions)
-    
-    if (!session || session.user.platformRole !== "PLATFORM_ADMIN") {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+
+    if (!session || session.user.platformRole !== 'PLATFORM_ADMIN') {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const { action } = await req.json()
-    const { orgId } = params
+    const { reason, permanent } = await req.json()
 
-    const status = action === "suspend" ? "SUSPENDED" : "ACTIVE"
-    const suspendedAt = action === "suspend" ? new Date() : null
+    const organization = await prisma.organization.findUnique({
+      where: { id: params.orgId }
+    })
 
-    const organization = await prisma.organization.update({
-      where: { id: orgId },
+    if (!organization) {
+      return NextResponse.json(
+        { error: 'Organization not found' },
+        { status: 404 }
+      )
+    }
+
+    const updatedOrg = await prisma.organization.update({
+      where: { id: params.orgId },
       data: {
-        status,
-        suspendedAt,
+        status: permanent ? 'SUSPENDED' : organization.status,
+        suspendedAt: new Date(),
+        settings: {
+          ...organization.settings as any,
+          suspensionReason: reason,
+          suspendedBy: session.user.id,
+          suspendedAt: new Date().toISOString()
+        }
       }
     })
 
@@ -33,21 +47,23 @@ export async function POST(
       data: {
         userId: session.user.id,
         userEmail: session.user.email,
-        action: action === "suspend" ? "ORGANIZATION_SUSPENDED" : "ORGANIZATION_ACTIVATED",
-        entityType: "ORGANIZATION",
-        entityId: orgId,
-        metadata: {
-          organizationName: organization.name,
-          performedBy: session.user.email,
-        }
+        action: permanent ? 'ORGANIZATION_SUSPENDED' : 'ORGANIZATION_UNSUSPENDED',
+        entityType: 'ORGANIZATION',
+        entityId: organization.id,
+        organizationId: organization.id,
+        metadata: { reason, permanent }
       }
     })
 
-    return NextResponse.json({ success: true, organization })
+    return NextResponse.json({
+      success: true,
+      status: updatedOrg.status,
+      message: permanent ? 'Organization suspended' : 'Organization unsuspended'
+    })
   } catch (error) {
-    console.error("Failed to update organization:", error)
+    console.error('Suspend organization error:', error)
     return NextResponse.json(
-      { error: "Failed to update organization" },
+      { error: 'Internal server error' },
       { status: 500 }
     )
   }

@@ -1,7 +1,8 @@
-import { NextRequest, NextResponse } from "next/server"
-import { getServerSession } from "next-auth"
-import { authOptions } from "@/lib/auth/options"
-import { prisma } from "@/prisma/client"
+// app/api/org/[orgSlug]/houses/[houseSlug]/plans/route.ts
+import { NextRequest, NextResponse } from 'next/server'
+import { getServerSession } from 'next-auth'
+import { authOptions } from '@/lib/auth/auth.config'
+import { prisma } from '@/lib/prisma'
 
 export async function GET(
   req: NextRequest,
@@ -9,58 +10,55 @@ export async function GET(
 ) {
   try {
     const session = await getServerSession(authOptions)
-    
-    if (!session?.user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
 
-    const { orgSlug, houseSlug } = params
-
-    const organization = await prisma.organization.findUnique({
-      where: { slug: orgSlug }
-    })
-
-    if (!organization) {
-      return NextResponse.json({ error: "Organization not found" }, { status: 404 })
-    }
-
-    const membership = await prisma.membership.findFirst({
-      where: {
-        userId: session.user.id,
-        organizationId: organization.id,
-        organizationRole: "ORG_OWNER",
-        status: "ACTIVE"
-      }
-    })
-
-    if (!membership) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    if (!session) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
     const house = await prisma.house.findFirst({
       where: {
-        slug: houseSlug,
-        organizationId: organization.id
-      }
+        slug: params.houseSlug,
+        organization: { slug: params.orgSlug }
+      },
+      select: { id: true, organizationId: true }
     })
 
     if (!house) {
-      return NextResponse.json({ error: "House not found" }, { status: 404 })
+      return NextResponse.json(
+        { error: 'House not found' },
+        { status: 404 }
+      )
     }
 
     const plans = await prisma.membershipPlan.findMany({
-      where: { houseId: house.id },
-      include: {
-        prices: true
+      where: {
+        OR: [
+          { houseId: house.id },
+          { organizationId: house.organizationId, houseId: null }
+        ],
+        status: 'ACTIVE'
       },
-      orderBy: { createdAt: "desc" }
+      include: {
+        prices: {
+          orderBy: { amount: 'asc' }
+        },
+        _count: {
+          select: {
+            memberships: true,
+            applications: {
+              where: { status: { in: ['PENDING', 'REVIEWING'] } }
+            }
+          }
+        }
+      },
+      orderBy: [{ type: 'asc' }, { createdAt: 'desc' }]
     })
 
-    return NextResponse.json(plans)
+    return NextResponse.json({ plans })
   } catch (error) {
-    console.error("Failed to fetch plans:", error)
+    console.error('Get plans error:', error)
     return NextResponse.json(
-      { error: "Failed to fetch plans" },
+      { error: 'Internal server error' },
       { status: 500 }
     )
   }
@@ -72,79 +70,74 @@ export async function POST(
 ) {
   try {
     const session = await getServerSession(authOptions)
-    
-    if (!session?.user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
 
-    const { orgSlug, houseSlug } = params
-    const body = await req.json()
-    const { name, description, type, isPublic, requiresApproval, features, prices } = body
-
-    if (!name) {
-      return NextResponse.json(
-        { error: "Plan name is required" },
-        { status: 400 }
-      )
-    }
-
-    if (!prices || prices.length === 0) {
-      return NextResponse.json(
-        { error: "At least one price option is required" },
-        { status: 400 }
-      )
-    }
-
-    const organization = await prisma.organization.findUnique({
-      where: { slug: orgSlug }
-    })
-
-    if (!organization) {
-      return NextResponse.json({ error: "Organization not found" }, { status: 404 })
-    }
-
-    const membership = await prisma.membership.findFirst({
-      where: {
-        userId: session.user.id,
-        organizationId: organization.id,
-        organizationRole: "ORG_OWNER",
-        status: "ACTIVE"
-      }
-    })
-
-    if (!membership) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    if (!session) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
     const house = await prisma.house.findFirst({
       where: {
-        slug: houseSlug,
-        organizationId: organization.id
+        slug: params.houseSlug,
+        organization: { slug: params.orgSlug }
+      },
+      include: {
+        members: {
+          where: {
+            membership: { userId: session.user.id },
+            role: { in: ['HOUSE_MANAGER', 'HOUSE_ADMIN'] }
+          }
+        }
       }
     })
 
     if (!house) {
-      return NextResponse.json({ error: "House not found" }, { status: 404 })
+      return NextResponse.json(
+        { error: 'House not found' },
+        { status: 404 }
+      )
+    }
+
+    if (house.members.length === 0) {
+      return NextResponse.json(
+        { error: 'Unauthorized - Admin access required' },
+        { status: 403 }
+      )
+    }
+
+    const {
+      name,
+      description,
+      type,
+      features,
+      isPublic,
+      requiresApproval,
+      prices,
+    } = await req.json()
+
+    if (!name || !type || !prices || prices.length === 0) {
+      return NextResponse.json(
+        { error: 'Name, type, and at least one price are required' },
+        { status: 400 }
+      )
     }
 
     const plan = await prisma.membershipPlan.create({
       data: {
         name,
-        description: description || null,
-        type: type || "STANDARD",
+        description,
+        type: type || 'STANDARD',
         features: features || [],
-        isPublic: isPublic ?? true,
-        requiresApproval: requiresApproval ?? false,
-        status: "ACTIVE",
-        organizationId: organization.id,
+        isPublic: isPublic !== false,
+        requiresApproval: requiresApproval || false,
+        status: 'ACTIVE',
+        organizationId: house.organizationId,
         houseId: house.id,
         prices: {
-          create: prices.map((price: any) => ({
-            billingFrequency: price.billingFrequency,
-            amount: price.amount,
-            currency: "USD",
-            setupFee: price.setupFee || 0,
-            vatRate: price.vatRate || 0,
+          create: prices.map((p: any) => ({
+            billingFrequency: p.billingFrequency,
+            amount: p.amount,
+            currency: p.currency || 'USD',
+            setupFee: p.setupFee || 0,
           }))
         }
       },
@@ -153,11 +146,27 @@ export async function POST(
       }
     })
 
-    return NextResponse.json(plan, { status: 201 })
+    await prisma.auditLog.create({
+      data: {
+        userId: session.user.id,
+        userEmail: session.user.email,
+        action: 'MEMBERSHIP_PLAN_CREATED',
+        entityType: 'MEMBERSHIP_PLAN',
+        entityId: plan.id,
+        organizationId: house.organizationId,
+        houseId: house.id,
+        metadata: { name, type, pricesCount: prices.length }
+      }
+    })
+
+    return NextResponse.json({
+      success: true,
+      plan
+    }, { status: 201 })
   } catch (error) {
-    console.error("Failed to create plan:", error)
+    console.error('Create plan error:', error)
     return NextResponse.json(
-      { error: "Failed to create plan" },
+      { error: 'Internal server error' },
       { status: 500 }
     )
   }

@@ -1,7 +1,8 @@
-import { NextRequest, NextResponse } from "next/server"
-import { getServerSession } from "next-auth"
-import { authOptions } from "@/lib/auth/options"
-import { prisma } from "@/prisma/client"
+// app/api/org/[orgSlug]/route.ts
+import { NextRequest, NextResponse } from 'next/server'
+import { getServerSession } from 'next-auth'
+import { authOptions } from '@/lib/auth/auth.config'
+import { prisma } from '@/lib/prisma'
 
 export async function GET(
   req: NextRequest,
@@ -9,16 +10,13 @@ export async function GET(
 ) {
   try {
     const session = await getServerSession(authOptions)
-    
-    if (!session?.user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+
+    if (!session) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const { orgSlug } = params
-
-    // Get organization by slug
     const organization = await prisma.organization.findUnique({
-      where: { slug: orgSlug },
+      where: { slug: params.orgSlug },
       include: {
         _count: {
           select: {
@@ -26,92 +24,44 @@ export async function GET(
             houses: true,
             events: true,
           }
+        },
+        memberships: {
+          where: { userId: session.user.id },
+          select: {
+            id: true,
+            role: true,
+            status: true,
+          }
         }
       }
     })
 
     if (!organization) {
-      return NextResponse.json({ error: "Organization not found" }, { status: 404 })
+      return NextResponse.json(
+        { error: 'Organization not found' },
+        { status: 404 }
+      )
     }
 
-    // Verify user is org owner
-    const membership = await prisma.membership.findFirst({
-      where: {
-        userId: session.user.id,
-        organizationId: organization.id,
-        organizationRole: "ORG_OWNER",
-        status: "ACTIVE"
+    // Check if user is a member
+    const userMembership = organization.memberships[0]
+    if (!userMembership) {
+      return NextResponse.json(
+        { error: 'You are not a member of this organization' },
+        { status: 403 }
+      )
+    }
+
+    return NextResponse.json({
+      organization: {
+        ...organization,
+        userRole: userMembership.role,
       }
     })
-
-    if (!membership) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
-
-    return NextResponse.json(organization)
   } catch (error) {
-    console.error("Failed to fetch organization:", error)
+    console.error('Get organization error:', error)
     return NextResponse.json(
-      { error: "Failed to fetch organization" },
-      { status: 500 }
-    )
-  }
-}
-
-export async function PUT(
-  req: NextRequest,
-  { params }: { params: { orgSlug: string } }
-) {
-  try {
-    const session = await getServerSession(authOptions)
-    
-    if (!session?.user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
-
-    const { orgSlug } = params
-    const { name, description, primaryColor, secondaryColor, logoUrl } = await req.json()
-
-    // Get organization
-    const organization = await prisma.organization.findUnique({
-      where: { slug: orgSlug }
-    })
-
-    if (!organization) {
-      return NextResponse.json({ error: "Organization not found" }, { status: 404 })
-    }
-
-    // Verify user is org owner
-    const membership = await prisma.membership.findFirst({
-      where: {
-        userId: session.user.id,
-        organizationId: organization.id,
-        organizationRole: "ORG_OWNER",
-        status: "ACTIVE"
-      }
-    })
-
-    if (!membership) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
-
-    // Update organization
-    const updated = await prisma.organization.update({
-      where: { id: organization.id },
-      data: {
-        name: name || undefined,
-        description: description || undefined,
-        primaryColor: primaryColor || undefined,
-        secondaryColor: secondaryColor || undefined,
-        logoUrl: logoUrl || undefined,
-      }
-    })
-
-    return NextResponse.json(updated)
-  } catch (error) {
-    console.error("Failed to update organization:", error)
-    return NextResponse.json(
-      { error: "Failed to update organization" },
+      { error: 'Internal server error' },
       { status: 500 }
     )
   }

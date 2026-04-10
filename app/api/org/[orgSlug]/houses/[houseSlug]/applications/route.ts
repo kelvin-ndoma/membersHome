@@ -1,7 +1,8 @@
-import { NextRequest, NextResponse } from "next/server"
-import { getServerSession } from "next-auth"
-import { authOptions } from "@/lib/auth/options"
-import { prisma } from "@/prisma/client"
+// app/api/org/[orgSlug]/houses/[houseSlug]/applications/route.ts
+import { NextRequest, NextResponse } from 'next/server'
+import { getServerSession } from 'next-auth'
+import { authOptions } from '@/lib/auth/auth.config'
+import { prisma } from '@/lib/prisma'
 
 export async function GET(
   req: NextRequest,
@@ -9,74 +10,86 @@ export async function GET(
 ) {
   try {
     const session = await getServerSession(authOptions)
-    
-    if (!session?.user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+
+    if (!session) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const { orgSlug, houseSlug } = params
     const searchParams = req.nextUrl.searchParams
-    const status = searchParams.get("status")
-
-    const organization = await prisma.organization.findUnique({
-      where: { slug: orgSlug }
-    })
-
-    if (!organization) {
-      return NextResponse.json({ error: "Organization not found" }, { status: 404 })
-    }
-
-    const membership = await prisma.membership.findFirst({
-      where: {
-        userId: session.user.id,
-        organizationId: organization.id,
-        organizationRole: "ORG_OWNER",
-        status: "ACTIVE"
-      }
-    })
-
-    if (!membership) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
+    const page = parseInt(searchParams.get('page') || '1')
+    const limit = parseInt(searchParams.get('limit') || '10')
+    const status = searchParams.get('status')
+    const planId = searchParams.get('planId')
 
     const house = await prisma.house.findFirst({
       where: {
-        slug: houseSlug,
-        organizationId: organization.id
-      }
+        slug: params.houseSlug,
+        organization: { slug: params.orgSlug }
+      },
+      select: { id: true }
     })
 
     if (!house) {
-      return NextResponse.json({ error: "House not found" }, { status: 404 })
+      return NextResponse.json(
+        { error: 'House not found' },
+        { status: 404 }
+      )
     }
 
-    const where: any = { 
-      organizationId: organization.id,
-      membershipPlan: {
-        houseId: house.id
+    // Check if user has permission to view applications
+    const canView = await prisma.houseMembership.findFirst({
+      where: {
+        houseId: house.id,
+        membership: { userId: session.user.id },
+        role: { in: ['HOUSE_MANAGER', 'HOUSE_ADMIN', 'HOUSE_STAFF'] }
       }
-    }
-    if (status && status !== "all") {
-      where.status = status
-    }
-
-    const applications = await prisma.membershipApplication.findMany({
-      where,
-      include: {
-        membershipPlan: {
-          select: {
-            name: true,
-          }
-        }
-      },
-      orderBy: { createdAt: "desc" }
     })
 
-    return NextResponse.json(applications)
+    if (!canView) {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 403 }
+      )
+    }
+
+    const where: any = { houseId: house.id }
+    if (status) where.status = status
+    if (planId) where.membershipPlanId = planId
+
+    const [applications, total] = await Promise.all([
+      prisma.membershipApplication.findMany({
+        where,
+        skip: (page - 1) * limit,
+        take: limit,
+        orderBy: { createdAt: 'desc' },
+        include: {
+          membershipPlan: {
+            select: { id: true, name: true, type: true }
+          },
+          selectedPrice: {
+            select: { billingFrequency: true, amount: true, currency: true }
+          },
+          reviewer: {
+            select: { id: true, name: true, email: true }
+          }
+        }
+      }),
+      prisma.membershipApplication.count({ where })
+    ])
+
+    return NextResponse.json({
+      applications,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit)
+      }
+    })
   } catch (error) {
-    console.error("Failed to fetch applications:", error)
+    console.error('Get applications error:', error)
     return NextResponse.json(
-      { error: "Failed to fetch applications" },
+      { error: 'Internal server error' },
       { status: 500 }
     )
   }
