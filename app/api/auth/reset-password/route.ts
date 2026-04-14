@@ -48,6 +48,7 @@ export async function POST(req: NextRequest) {
       data: {
         passwordHash: hashedPassword,
         invitationToken: null,
+        emailVerified: user.emailVerified || new Date(),
       },
     })
 
@@ -64,7 +65,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      message: 'Password reset successfully',
+      message: 'Password reset successfully. Please login with your new password.',
     })
   } catch (error) {
     console.error('Reset password error:', error)

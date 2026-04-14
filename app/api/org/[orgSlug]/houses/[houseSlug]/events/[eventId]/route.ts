@@ -117,28 +117,74 @@ export async function PATCH(
     }
 
     const updates = await req.json()
+    
+    // Prevent changing certain fields
     delete updates.slug
     delete updates.id
+    delete updates.organizationId
+    delete updates.houseId
+    delete updates.createdBy
+
+    // Build update data
+    const updateData: any = { ...updates }
+
+    // Handle date conversions
+    if (updates.startDate) {
+      updateData.startDate = new Date(updates.startDate)
+    }
+    if (updates.endDate) {
+      updateData.endDate = new Date(updates.endDate)
+    }
+
+    // Validate dates if both are being updated
+    const startDate = updateData.startDate || event.startDate
+    const endDate = updateData.endDate || event.endDate
+    
+    if (endDate && new Date(endDate) <= new Date(startDate)) {
+      return NextResponse.json(
+        { error: 'End date must be after start date' },
+        { status: 400 }
+      )
+    }
+
+    // Handle status change to PUBLISHED
+    if (updates.status === 'PUBLISHED' && event.status !== 'PUBLISHED') {
+      updateData.publishedAt = new Date()
+    }
+
+    // Handle address JSON
+    if (updates.address) {
+      try {
+        updateData.address = JSON.parse(updates.address)
+      } catch {
+        // Ignore parsing errors
+      }
+    }
+
+    // Handle settings - merge with existing settings
+    if (updates.settings) {
+      const currentSettings = (event.settings as any) || {}
+      updateData.settings = {
+        ...currentSettings,
+        ...updates.settings,
+      }
+    }
 
     const updatedEvent = await prisma.event.update({
       where: { id: event.id },
-      data: {
-        ...updates,
-        startDate: updates.startDate ? new Date(updates.startDate) : undefined,
-        endDate: updates.endDate ? new Date(updates.endDate) : undefined,
-      }
+      data: updateData
     })
 
     await prisma.auditLog.create({
       data: {
         userId: session.user.id,
-        userEmail: session.user.email,
+        userEmail: session.user.email || '',
         action: 'EVENT_UPDATED',
         entityType: 'EVENT',
         entityId: event.id,
         organizationId: event.organizationId,
         houseId: event.houseId,
-        metadata: { updates }
+        metadata: { updates: Object.keys(updates) }
       }
     })
 
@@ -167,6 +213,13 @@ export async function DELETE(
       where: {
         id: params.eventId,
         organization: { slug: params.orgSlug }
+      },
+      include: {
+        tickets: {
+          include: {
+            purchases: true
+          }
+        }
       }
     })
 
@@ -194,15 +247,46 @@ export async function DELETE(
       )
     }
 
+    // Check if event has ticket sales
+    const hasSales = event.tickets.some(ticket => ticket.soldQuantity > 0)
+    if (hasSales) {
+      return NextResponse.json(
+        { error: 'Cannot delete event with ticket sales. Cancel it instead.' },
+        { status: 400 }
+      )
+    }
+
     await prisma.$transaction(async (tx) => {
+      // Delete ticket validations
+      for (const ticket of event.tickets) {
+        await tx.ticketValidation.deleteMany({
+          where: { purchase: { ticketId: ticket.id } }
+        })
+      }
+      
+      // Delete ticket purchases
+      for (const ticket of event.tickets) {
+        await tx.ticketPurchase.deleteMany({
+          where: { ticketId: ticket.id }
+        })
+      }
+      
+      // Delete tickets
+      await tx.ticket.deleteMany({
+        where: { eventId: event.id }
+      })
+      
+      // Delete RSVPs
       await tx.rSVP.deleteMany({ where: { eventId: event.id } })
+      
+      // Delete event
       await tx.event.delete({ where: { id: event.id } })
     })
 
     await prisma.auditLog.create({
       data: {
         userId: session.user.id,
-        userEmail: session.user.email,
+        userEmail: session.user.email || '',
         action: 'EVENT_DELETED',
         entityType: 'EVENT',
         entityId: event.id,

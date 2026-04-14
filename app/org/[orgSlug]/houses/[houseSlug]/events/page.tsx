@@ -7,11 +7,11 @@ import {
   MapPin, 
   Users,
   Ticket,
-  DollarSign,
   MoreVertical,
   Edit,
   Copy,
   Eye,
+  Clock,
 } from 'lucide-react'
 
 interface EventsPageProps {
@@ -118,6 +118,42 @@ export default async function EventsPage({ params, searchParams }: EventsPagePro
       }
     }
   })
+
+  // Helper to format date range
+  const formatDateRange = (start: Date, end: Date) => {
+    const sameDay = start.toDateString() === end.toDateString()
+    
+    if (sameDay) {
+      return (
+        <>
+          {start.toLocaleDateString('en-US', {
+            weekday: 'short',
+            month: 'short',
+            day: 'numeric',
+          })}
+          {' • '}
+          {start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+          {' - '}
+          {end.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+        </>
+      )
+    }
+    
+    return (
+      <>
+        {start.toLocaleDateString('en-US', {
+          month: 'short',
+          day: 'numeric',
+        })}
+        {' - '}
+        {end.toLocaleDateString('en-US', {
+          month: 'short',
+          day: 'numeric',
+          year: 'numeric',
+        })}
+      </>
+    )
+  }
 
   return (
     <div className="space-y-6">
@@ -230,6 +266,12 @@ export default async function EventsPage({ params, searchParams }: EventsPagePro
                     }`}>
                       {event.type.replace('_', ' ')}
                     </span>
+                    {/* RSVP Status Badge */}
+                    {((event.settings as any)?.rsvp?.enabled) && (
+                      <span className="text-xs px-2 py-0.5 rounded-full bg-purple-100 text-purple-800">
+                        RSVP Open
+                      </span>
+                    )}
                   </div>
                 </div>
                 <div className="relative">
@@ -249,22 +291,12 @@ export default async function EventsPage({ params, searchParams }: EventsPagePro
               {/* Event Details */}
               <div className="space-y-2 mb-4">
                 <div className="flex items-center gap-2 text-sm text-gray-600">
-                  <Calendar className="h-4 w-4 text-gray-400" />
-                  <span>
-                    {new Date(event.startDate).toLocaleDateString('en-US', {
-                      weekday: 'short',
-                      month: 'short',
-                      day: 'numeric',
-                    })} at {' '}
-                    {new Date(event.startDate).toLocaleTimeString([], { 
-                      hour: '2-digit', 
-                      minute: '2-digit' 
-                    })}
-                  </span>
+                  <Calendar className="h-4 w-4 text-gray-400 flex-shrink-0" />
+                  <span>{formatDateRange(event.startDate, event.endDate)}</span>
                 </div>
                 {event.location && (
                   <div className="flex items-center gap-2 text-sm text-gray-600">
-                    <MapPin className="h-4 w-4 text-gray-400" />
+                    <MapPin className="h-4 w-4 text-gray-400 flex-shrink-0" />
                     <span className="truncate">{event.location}</span>
                   </div>
                 )}

@@ -19,22 +19,19 @@ export async function GET(
     const searchParams = req.nextUrl.searchParams
     const page = parseInt(searchParams.get('page') || '1')
     const limit = parseInt(searchParams.get('limit') || '10')
-    const type = searchParams.get('type')
     const status = searchParams.get('status')
+    const type = searchParams.get('type')
+    const search = searchParams.get('search')
 
     const house = await prisma.house.findFirst({
       where: {
         slug: params.houseSlug,
         organization: { slug: params.orgSlug }
-      },
-      select: { id: true, organizationId: true }
+      }
     })
 
     if (!house) {
-      return NextResponse.json(
-        { error: 'House not found' },
-        { status: 404 }
-      )
+      return NextResponse.json({ error: 'House not found' }, { status: 404 })
     }
 
     const where: any = {
@@ -43,8 +40,15 @@ export async function GET(
         { organizationId: house.organizationId, houseId: null }
       ]
     }
-    if (type) where.type = type
+
     if (status) where.status = status
+    if (type) where.type = type
+    if (search) {
+      where.OR = [
+        { subject: { contains: search, mode: 'insensitive' } },
+        { body: { contains: search, mode: 'insensitive' } },
+      ]
+    }
 
     const [communications, total] = await Promise.all([
       prisma.communication.findMany({
@@ -72,10 +76,7 @@ export async function GET(
     })
   } catch (error) {
     console.error('Get communications error:', error)
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
 
@@ -96,82 +97,149 @@ export async function POST(
         organization: { slug: params.orgSlug }
       },
       include: {
+        organization: true,
         members: {
-          where: {
-            membership: { userId: session.user.id },
-            role: { in: ['HOUSE_MANAGER', 'HOUSE_ADMIN', 'HOUSE_STAFF'] }
+          where: { status: 'ACTIVE' },
+          include: {
+            membership: {
+              include: {
+                user: {
+                  select: { id: true, email: true, name: true }
+                }
+              }
+            }
           }
         }
       }
     })
 
     if (!house) {
-      return NextResponse.json(
-        { error: 'House not found' },
-        { status: 404 }
-      )
+      return NextResponse.json({ error: 'House not found' }, { status: 404 })
     }
 
-    if (house.members.length === 0) {
-      return NextResponse.json(
-        { error: 'Unauthorized - Staff access required' },
-        { status: 403 }
-      )
+    const data = await req.json()
+    const { subject, body, type, recipientType, scheduledFor, status } = data
+
+    if (!subject || !body || !type || !recipientType) {
+      return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
     }
 
-    const {
-      subject,
-      body,
-      type,
-      recipientType,
-      segmentFilters,
-      scheduledFor,
-    } = await req.json()
-
-    if (!subject || !body) {
-      return NextResponse.json(
-        { error: 'Subject and body are required' },
-        { status: 400 }
-      )
-    }
-
+    // Create communication record
     const communication = await prisma.communication.create({
       data: {
         subject,
         body,
-        type: type || 'EMAIL',
-        recipientType: recipientType || 'ALL_MEMBERS',
-        segmentFilters: segmentFilters || {},
-        status: scheduledFor ? 'SCHEDULED' : 'DRAFT',
+        type,
+        recipientType,
         scheduledFor: scheduledFor ? new Date(scheduledFor) : null,
+        status: status || 'DRAFT',
         organizationId: house.organizationId,
         houseId: house.id,
         createdBy: session.user.id,
       }
     })
 
-    await prisma.auditLog.create({
-      data: {
-        userId: session.user.id,
-        userEmail: session.user.email,
-        action: 'COMMUNICATION_CREATED',
-        entityType: 'COMMUNICATION',
-        entityId: communication.id,
-        organizationId: house.organizationId,
-        houseId: house.id,
-        metadata: { subject, type, recipientType }
+    // If status is SCHEDULED and no scheduledFor, send immediately
+    if (status === 'SCHEDULED' && !scheduledFor) {
+      // Start sending in background
+      sendCommunication(communication.id, house.id)
+    }
+
+    return NextResponse.json({ success: true, communication }, { status: 201 })
+  } catch (error) {
+    console.error('Create communication error:', error)
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+  }
+}
+
+async function sendCommunication(communicationId: string, houseId: string) {
+  try {
+    const communication = await prisma.communication.findUnique({
+      where: { id: communicationId },
+      include: {
+        house: {
+          include: {
+            members: {
+              where: { status: 'ACTIVE' },
+              include: {
+                membership: {
+                  include: {
+                    user: { select: { email: true, name: true } }
+                  }
+                }
+              }
+            }
+          }
+        }
       }
     })
 
-    return NextResponse.json({
-      success: true,
-      communication
-    }, { status: 201 })
+    if (!communication) return
+
+    // Update status to SENDING
+    await prisma.communication.update({
+      where: { id: communicationId },
+      data: { status: 'SENDING' }
+    })
+
+    const members = communication.house?.members || []
+    let sentCount = 0
+
+    // Send to each member
+    for (const member of members) {
+      try {
+        const user = member.membership.user
+        
+        // Replace variables in subject and body
+        let personalizedSubject = communication.subject
+          .replace(/{{memberName}}/g, user.name || 'Member')
+          .replace(/{{houseName}}/g, communication.house?.name || '')
+        
+        let personalizedBody = communication.body
+          .replace(/{{memberName}}/g, user.name || 'Member')
+          .replace(/{{memberEmail}}/g, user.email || '')
+          .replace(/{{houseName}}/g, communication.house?.name || '')
+          .replace(/{{portalUrl}}/g, `${process.env.NEXT_PUBLIC_APP_URL}/portal/${communication.house?.slug}/dashboard`)
+
+        await sendEmail({
+          to: user.email!,
+          template: 'announcement',
+          data: {
+            name: user.name || 'Member',
+            subject: personalizedSubject,
+            body: personalizedBody,
+          },
+        })
+
+        sentCount++
+        
+        // Update progress
+        await prisma.communication.update({
+          where: { id: communicationId },
+          data: { sentCount }
+        })
+      } catch (error) {
+        console.error(`Failed to send to member:`, error)
+      }
+    }
+
+    // Mark as sent
+    await prisma.communication.update({
+      where: { id: communicationId },
+      data: {
+        status: 'SENT',
+        sentAt: new Date(),
+        sentCount
+      }
+    })
+
   } catch (error) {
-    console.error('Create communication error:', error)
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    )
+    console.error('Send communication error:', error)
+    
+    // Mark as failed
+    await prisma.communication.update({
+      where: { id: communicationId },
+      data: { status: 'FAILED' }
+    })
   }
 }

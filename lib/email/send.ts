@@ -6,6 +6,12 @@ import { AnnouncementEmail } from './templates/announcement'
 import { ApplicationRejectedEmail } from './templates/application-rejected'
 import { CardCollectionEmail } from './templates/card-collection'
 import { PaymentFailedEmail } from './templates/payment-failed'
+import { StaffInvitationEmail } from './templates/staff-invitation'
+import { MemberInvitationEmail } from './templates/member-invitation'
+import { ResetPasswordEmail } from './templates/reset-password'
+import { VerifyEmail } from './templates/verify-email'
+import { MembershipCancellationRequestedEmail } from './templates/membership-cancellation-requested'
+import { MembershipCancellationAdminNotificationEmail } from './templates/membership-cancellation-admin-notification'
 import { createElement } from 'react'
 
 interface SendEmailOptions {
@@ -15,11 +21,11 @@ interface SendEmailOptions {
 }
 
 export async function sendEmail({ to, template, data }: SendEmailOptions) {
-  // Map templates to components - COMPLETE WITH ALL TEMPLATES
+  // Map templates to components
   const templates: Record<EmailTemplate, React.ComponentType<any>> = {
     welcome: WelcomeEmail,
-    'verify-email': WelcomeEmail,
-    'reset-password': WelcomeEmail,
+    'verify-email': VerifyEmail,
+    'reset-password': ResetPasswordEmail,
     invitation: InvitationEmail,
     'application-received': WelcomeEmail,
     'application-approved': WelcomeEmail,
@@ -29,6 +35,14 @@ export async function sendEmail({ to, template, data }: SendEmailOptions) {
     announcement: AnnouncementEmail,
     'card-collection': CardCollectionEmail,
     'payment-failed': PaymentFailedEmail,
+    'staff-invitation': StaffInvitationEmail,
+    'member-invitation': MemberInvitationEmail,
+    'membership-cancellation-requested': MembershipCancellationRequestedEmail,
+    'membership-cancelled': MembershipCancellationRequestedEmail,
+    'membership-paused': MembershipCancellationRequestedEmail,
+    'membership-resumed': MembershipCancellationRequestedEmail,
+    'membership-cancellation-admin-notification': MembershipCancellationAdminNotificationEmail,
+    'form-submission': AnnouncementEmail, // Use AnnouncementEmail as fallback for form submissions
   }
 
   const EmailComponent = templates[template]
@@ -37,7 +51,7 @@ export async function sendEmail({ to, template, data }: SendEmailOptions) {
     throw new Error(`Template ${template} not found`)
   }
 
-  // Complete subjects object with ALL templates
+  // Subjects
   const subjects: Record<EmailTemplate, string> = {
     welcome: 'Welcome to MembersHome - Verify Your Email',
     'verify-email': 'Verify Your Email Address',
@@ -51,6 +65,14 @@ export async function sendEmail({ to, template, data }: SendEmailOptions) {
     announcement: data.subject || 'Announcement from MembersHome',
     'card-collection': `Add Your Payment Method - ${data.organizationName || 'Membership Application'}`,
     'payment-failed': `Payment Failed - Action Required for ${data.organizationName || 'Your Membership'}`,
+    'staff-invitation': `You've been invited to join ${data.organizationName || 'MembersHome'} as ${data.role || 'Staff'}`,
+    'member-invitation': `You've been invited to join ${data.organizationName || 'MembersHome'}`,
+    'membership-cancellation-requested': `Cancellation Request Received - ${data.organizationName || 'MembersHome'}`,
+    'membership-cancelled': `Membership Cancelled - ${data.organizationName || 'MembersHome'}`,
+    'membership-paused': `Membership Paused - ${data.organizationName || 'MembersHome'}`,
+    'membership-resumed': `Membership Resumed - ${data.organizationName || 'MembersHome'}`,
+    'membership-cancellation-admin-notification': `🚨 Cancellation Request: ${data.memberName || 'Member'} - ${data.organizationName || 'MembersHome'}`,
+    'form-submission': `New Form Submission: ${data.formTitle || 'Form'}`,
   }
 
   try {

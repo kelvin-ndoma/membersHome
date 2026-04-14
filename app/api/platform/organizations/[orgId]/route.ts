@@ -106,7 +106,7 @@ export async function PATCH(
   }
 }
 
-// app/api/platform/organizations/[orgId]/route.ts - DELETE function only
+// app/api/platform/organizations/[orgId]/route.ts - DELETE function
 
 export async function DELETE(
   req: NextRequest,
@@ -138,203 +138,158 @@ export async function DELETE(
     if (permanent) {
       console.log('Performing PERMANENT DELETE')
       
-      // Increase transaction timeout to 30 seconds
+      // CRITICAL: Delete in correct order - children before parents
       await prisma.$transaction(
         async (tx) => {
-          // Batch delete operations for efficiency
-          
-          // 1. Delete all member-related data for houses in this org
-          const houses = await tx.house.findMany({
-            where: { organizationId: params.orgId },
-            select: { id: true }
-          })
-          const houseIds = houses.map(h => h.id)
-
-          if (houseIds.length > 0) {
-            // Delete member dashboards
-            await tx.memberDashboard.deleteMany({ 
-              where: { houseId: { in: houseIds } } 
-            })
-            
-            // Delete member profiles
-            await tx.memberProfile.deleteMany({ 
-              where: { houseId: { in: houseIds } } 
-            })
-            
-            // Delete member activities
-            await tx.memberActivity.deleteMany({ 
-              where: { houseMembership: { houseId: { in: houseIds } } } 
-            })
-            
-            // Delete house memberships
-            await tx.houseMembership.deleteMany({ 
-              where: { houseId: { in: houseIds } } 
-            })
-          }
-
-          // 2. Delete member portals
-          await tx.memberPortal.deleteMany({ 
-            where: { organizationId: params.orgId } 
+          // 1. First, delete all RSVPs (depends on house memberships and events)
+          await tx.rSVP.deleteMany({
+            where: { organizationId: params.orgId }
           })
 
-          // 3. Delete ticket-related data
-          const tickets = await tx.ticket.findMany({
-            where: { organizationId: params.orgId },
-            select: { id: true }
-          })
-          const ticketIds = tickets.map(t => t.id)
-
-          if (ticketIds.length > 0) {
-            const purchases = await tx.ticketPurchase.findMany({
-              where: { ticketId: { in: ticketIds } },
-              select: { id: true }
-            })
-            const purchaseIds = purchases.map(p => p.id)
-
-            if (purchaseIds.length > 0) {
-              await tx.ticketValidation.deleteMany({
-                where: { purchaseId: { in: purchaseIds } }
-              })
-              
-              await tx.payment.deleteMany({
-                where: { ticketPurchaseId: { in: purchaseIds } }
-              })
+          // 2. Delete ticket validations (depends on ticket purchases)
+          await tx.ticketValidation.deleteMany({
+            where: { 
+              purchase: { 
+                ticket: { organizationId: params.orgId } 
+              } 
             }
-
-            await tx.ticketPurchase.deleteMany({
-              where: { ticketId: { in: ticketIds } }
-            })
-          }
-
-          await tx.ticket.deleteMany({ 
-            where: { organizationId: params.orgId } 
           })
 
-          // 4. Delete RSVPs and events
-          await tx.rSVP.deleteMany({ 
-            where: { organizationId: params.orgId } 
-          })
-          
-          await tx.event.deleteMany({ 
-            where: { organizationId: params.orgId } 
+          // 3. Delete payments for ticket purchases
+          await tx.payment.deleteMany({
+            where: { ticketPurchase: { organizationId: params.orgId } }
           })
 
-          // 5. Delete member messages
-          await tx.memberMessage.deleteMany({ 
-            where: { organizationId: params.orgId } 
+          // 4. Delete ticket purchases
+          await tx.ticketPurchase.deleteMany({
+            where: { organizationId: params.orgId }
           })
 
-          // 6. Delete forms and submissions
-          const forms = await tx.customForm.findMany({
-            where: { organizationId: params.orgId },
-            select: { id: true }
-          })
-          const formIds = forms.map(f => f.id)
-
-          if (formIds.length > 0) {
-            await tx.formSubmission.deleteMany({
-              where: { formId: { in: formIds } }
-            })
-          }
-
-          await tx.customForm.deleteMany({ 
-            where: { organizationId: params.orgId } 
+          // 5. Delete tickets
+          await tx.ticket.deleteMany({
+            where: { organizationId: params.orgId }
           })
 
-          // 7. Delete communications and reports
-          await tx.communication.deleteMany({ 
-            where: { organizationId: params.orgId } 
-          })
-          
-          await tx.report.deleteMany({ 
-            where: { organizationId: params.orgId } 
+          // 6. Delete events (RSVPs already deleted)
+          await tx.event.deleteMany({
+            where: { organizationId: params.orgId }
           })
 
-          // 8. Delete invoices
-          await tx.invoice.deleteMany({ 
-            where: { organizationId: params.orgId } 
+          // 7. Delete member messages
+          await tx.memberMessage.deleteMany({
+            where: { organizationId: params.orgId }
           })
 
-          // 9. Delete membership plans and related data
-          const plans = await tx.membershipPlan.findMany({
-            where: { organizationId: params.orgId },
-            select: { id: true }
-          })
-          const planIds = plans.map(p => p.id)
-
-          if (planIds.length > 0) {
-            await tx.planPrice.deleteMany({
-              where: { membershipPlanId: { in: planIds } }
-            })
-          }
-
-          // 10. Delete membership applications
-          const applications = await tx.membershipApplication.findMany({
-            where: { organizationId: params.orgId },
-            select: { id: true }
-          })
-          const applicationIds = applications.map(a => a.id)
-
-          if (applicationIds.length > 0) {
-            await tx.payment.deleteMany({
-              where: { membershipApplicationId: { in: applicationIds } }
-            })
-          }
-
-          await tx.membershipApplication.deleteMany({ 
-            where: { organizationId: params.orgId } 
+          // 8. Delete member activities
+          await tx.memberActivity.deleteMany({
+            where: { houseMembership: { house: { organizationId: params.orgId } } }
           })
 
-          // 11. Delete membership items and cancellation requests
-          await tx.cancellationRequest.deleteMany({ 
-            where: { membershipItem: { organizationId: params.orgId } } 
-          })
-          
-          await tx.membershipItem.deleteMany({ 
-            where: { organizationId: params.orgId } 
+          // 9. Delete member dashboards
+          await tx.memberDashboard.deleteMany({
+            where: { house: { organizationId: params.orgId } }
           })
 
-          // 12. Delete membership plans
-          await tx.membershipPlan.deleteMany({ 
-            where: { organizationId: params.orgId } 
+          // 10. Delete member profiles
+          await tx.memberProfile.deleteMany({
+            where: { house: { organizationId: params.orgId } }
           })
 
-          // 13. Delete any remaining payments
-          await tx.payment.deleteMany({ 
-            where: { organizationId: params.orgId } 
+          // 11. Delete cancellation requests
+          await tx.cancellationRequest.deleteMany({
+            where: { membershipItem: { organizationId: params.orgId } }
           })
 
-          // 14. Delete houses
-          await tx.house.deleteMany({ 
-            where: { organizationId: params.orgId } 
+          // 12. Delete membership items
+          await tx.membershipItem.deleteMany({
+            where: { organizationId: params.orgId }
           })
 
-          // 15. Delete memberships
-          await tx.membership.deleteMany({ 
-            where: { organizationId: params.orgId } 
+          // 13. Delete payments for membership applications
+          await tx.payment.deleteMany({
+            where: { membershipApplication: { organizationId: params.orgId } }
           })
 
-          // 16. Delete audit logs
-          await tx.auditLog.deleteMany({ 
-            where: { organizationId: params.orgId } 
+          // 14. Delete membership applications
+          await tx.membershipApplication.deleteMany({
+            where: { organizationId: params.orgId }
           })
 
-          // 17. Finally delete the organization
-          await tx.organization.delete({ 
-            where: { id: params.orgId } 
+          // 15. Delete form submissions
+          await tx.formSubmission.deleteMany({
+            where: { form: { organizationId: params.orgId } }
+          })
+
+          // 16. Delete custom forms
+          await tx.customForm.deleteMany({
+            where: { organizationId: params.orgId }
+          })
+
+          // 17. Delete communications
+          await tx.communication.deleteMany({
+            where: { organizationId: params.orgId }
+          })
+
+          // 18. Delete reports
+          await tx.report.deleteMany({
+            where: { organizationId: params.orgId }
+          })
+
+          // 19. Delete invoices
+          await tx.invoice.deleteMany({
+            where: { organizationId: params.orgId }
+          })
+
+          // 20. Delete plan prices
+          await tx.planPrice.deleteMany({
+            where: { membershipPlan: { organizationId: params.orgId } }
+          })
+
+          // 21. Delete membership plans
+          await tx.membershipPlan.deleteMany({
+            where: { organizationId: params.orgId }
+          })
+
+          // 22. Delete member portals
+          await tx.memberPortal.deleteMany({
+            where: { organizationId: params.orgId }
+          })
+
+          // 23. NOW delete house memberships (RSVPs already deleted)
+          await tx.houseMembership.deleteMany({
+            where: { house: { organizationId: params.orgId } }
+          })
+
+          // 24. Delete houses
+          await tx.house.deleteMany({
+            where: { organizationId: params.orgId }
+          })
+
+          // 25. Delete memberships
+          await tx.membership.deleteMany({
+            where: { organizationId: params.orgId }
+          })
+
+          // 26. Delete audit logs
+          await tx.auditLog.deleteMany({
+            where: { organizationId: params.orgId }
+          })
+
+          // 27. Finally delete the organization
+          await tx.organization.delete({
+            where: { id: params.orgId }
           })
         },
         {
-          timeout: 30000, // 30 seconds timeout
-          maxWait: 5000,  // Wait up to 5 seconds to start transaction
+          timeout: 60000, // 60 seconds timeout for large deletions
         }
       )
 
-      // Create final audit log
+      // Create final audit log (outside transaction since org is deleted)
       await prisma.auditLog.create({
         data: {
           userId: session.user.id,
-          userEmail: session.user.email,
+          userEmail: session.user.email || '',
           action: 'ORGANIZATION_DELETED_PERMANENTLY',
           entityType: 'ORGANIZATION',
           entityId: params.orgId,
@@ -369,7 +324,7 @@ export async function DELETE(
       await prisma.auditLog.create({
         data: {
           userId: session.user.id,
-          userEmail: session.user.email,
+          userEmail: session.user.email || '',
           action: 'ORGANIZATION_CANCELLED',
           entityType: 'ORGANIZATION',
           entityId: organization.id,

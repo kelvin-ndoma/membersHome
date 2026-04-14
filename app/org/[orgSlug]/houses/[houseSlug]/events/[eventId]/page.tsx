@@ -10,20 +10,9 @@ import {
   Clock,
   Globe,
   DollarSign,
-  Edit,
-  Trash2,
-  Copy,
-  Share2,
-  Eye,
-  EyeOff,
-  MoreVertical,
-  ArrowLeft,
-  QrCode,
-  Download,
-  Mail,
   CheckCircle,
-  XCircle,
-  AlertCircle,
+  Settings2,
+  Ban,
 } from 'lucide-react'
 import EventActions from '@/components/events/EventActions'
 
@@ -109,6 +98,10 @@ export default async function EventDetailPage({ params }: EventDetailPageProps) 
     notFound()
   }
 
+  const settings = (event.settings as any) || {}
+  const rsvpSettings = settings.rsvp || {}
+  const ticketSettings = settings.tickets || {}
+
   const totalAttendees = event.rsvps.filter(r => r.status === 'ATTENDED' || r.status === 'CONFIRMED').length
   const totalRevenue = event.tickets.reduce((sum, ticket) => {
     return sum + (ticket.price * ticket.soldQuantity)
@@ -130,6 +123,56 @@ export default async function EventDetailPage({ params }: EventDetailPageProps) 
     NO_SHOW: 'bg-gray-100 text-gray-800',
   }
 
+  // Format date range
+  const formatDateRange = () => {
+    const start = event.startDate
+    const end = event.endDate
+    const sameDay = start.toDateString() === end.toDateString()
+    
+    if (sameDay) {
+      return (
+        <>
+          {start.toLocaleDateString('en-US', {
+            weekday: 'long',
+            month: 'long',
+            day: 'numeric',
+            year: 'numeric'
+          })}
+          <br />
+          <span className="text-sm text-gray-600">
+            {start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+            {' - '}
+            {end.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+          </span>
+        </>
+      )
+    }
+    
+    return (
+      <>
+        {start.toLocaleDateString('en-US', {
+          weekday: 'long',
+          month: 'long',
+          day: 'numeric',
+          year: 'numeric'
+        })}
+        {' at '}
+        {start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+        <br />
+        <span className="text-sm text-gray-600">
+          to {end.toLocaleDateString('en-US', {
+            weekday: 'long',
+            month: 'long',
+            day: 'numeric',
+            year: 'numeric'
+          })}
+          {' at '}
+          {end.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+        </span>
+      </>
+    )
+  }
+
   return (
     <div className="space-y-6">
       {/* Back Navigation */}
@@ -137,7 +180,7 @@ export default async function EventDetailPage({ params }: EventDetailPageProps) 
         href={`/org/${params.orgSlug}/houses/${params.houseSlug}/events`}
         className="inline-flex items-center gap-2 text-sm text-gray-500 hover:text-gray-700"
       >
-        <ArrowLeft className="h-4 w-4" />
+        <Calendar className="h-4 w-4" />
         Back to Events
       </Link>
 
@@ -154,7 +197,7 @@ export default async function EventDetailPage({ params }: EventDetailPageProps) 
         <div className="p-6">
           <div className="flex items-start justify-between">
             <div className="flex-1">
-              <div className="flex items-center gap-3 mb-3">
+              <div className="flex items-center gap-3 mb-3 flex-wrap">
                 <h1 className="text-3xl font-bold text-gray-900">{event.title}</h1>
                 <span className={`px-3 py-1 text-sm font-medium rounded-full ${statusColors[event.status]}`}>
                   {event.status}
@@ -164,41 +207,30 @@ export default async function EventDetailPage({ params }: EventDetailPageProps) 
                     Members Only
                   </span>
                 )}
+                {rsvpSettings.enabled && (
+                  <span className="px-3 py-1 text-sm font-medium bg-purple-100 text-purple-800 rounded-full">
+                    RSVP Open
+                  </span>
+                )}
               </div>
               
               <p className="text-gray-600 mb-6">{event.description || 'No description provided.'}</p>
               
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-blue-50 rounded-lg flex items-center justify-center">
+                <div className="flex items-start gap-3">
+                  <div className="w-10 h-10 bg-blue-50 rounded-lg flex items-center justify-center flex-shrink-0">
                     <Calendar className="h-5 w-5 text-blue-600" />
                   </div>
                   <div>
                     <p className="text-sm text-gray-500">Date & Time</p>
                     <p className="font-medium text-gray-900">
-                      {new Date(event.startDate).toLocaleDateString('en-US', {
-                        weekday: 'long',
-                        month: 'long',
-                        day: 'numeric',
-                        year: 'numeric'
-                      })}
-                    </p>
-                    <p className="text-sm text-gray-600">
-                      {new Date(event.startDate).toLocaleTimeString([], { 
-                        hour: '2-digit', 
-                        minute: '2-digit',
-                        timeZoneName: 'short'
-                      })}
-                      {event.endDate && ` - ${new Date(event.endDate).toLocaleTimeString([], { 
-                        hour: '2-digit', 
-                        minute: '2-digit' 
-                      })}`}
+                      {formatDateRange()}
                     </p>
                   </div>
                 </div>
 
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-green-50 rounded-lg flex items-center justify-center">
+                <div className="flex items-start gap-3">
+                  <div className="w-10 h-10 bg-green-50 rounded-lg flex items-center justify-center flex-shrink-0">
                     {event.type === 'ONLINE' ? (
                       <Globe className="h-5 w-5 text-green-600" />
                     ) : (
@@ -224,8 +256,8 @@ export default async function EventDetailPage({ params }: EventDetailPageProps) 
                 </div>
 
                 {event.capacity && (
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 bg-purple-50 rounded-lg flex items-center justify-center">
+                  <div className="flex items-start gap-3">
+                    <div className="w-10 h-10 bg-purple-50 rounded-lg flex items-center justify-center flex-shrink-0">
                       <Users className="h-5 w-5 text-purple-600" />
                     </div>
                     <div>
@@ -237,6 +269,26 @@ export default async function EventDetailPage({ params }: EventDetailPageProps) 
                   </div>
                 )}
               </div>
+
+              {/* Settings Summary */}
+              {(rsvpSettings.enabled || ticketSettings.allowPurchases) && (
+                <div className="mt-4 pt-4 border-t border-gray-100 flex items-center gap-4 text-sm">
+                  <Settings2 className="h-4 w-4 text-gray-400" />
+                  {rsvpSettings.enabled && (
+                    <span className="text-gray-600">
+                      Max {rsvpSettings.maxGuestsPerRsvp || 1} guest{rsvpSettings.maxGuestsPerRsvp !== 1 ? 's' : ''} per RSVP
+                      {rsvpSettings.deadline && (
+                        <> • Deadline: {new Date(rsvpSettings.deadline).toLocaleDateString()}</>
+                      )}
+                    </span>
+                  )}
+                  {ticketSettings.allowPurchases && (
+                    <span className="text-gray-600">
+                      Max {ticketSettings.maxPerPurchase || 5} tickets per purchase
+                    </span>
+                  )}
+                </div>
+              )}
             </div>
             
             <EventActions event={event} />
@@ -422,7 +474,7 @@ export default async function EventDetailPage({ params }: EventDetailPageProps) 
                   </span>
                   {rsvp.guestsCount > 0 && (
                     <span className="text-xs text-gray-500">
-                      +{rsvp.guestsCount} guests
+                      +{rsvp.guestsCount} guest{rsvp.guestsCount !== 1 ? 's' : ''}
                     </span>
                   )}
                 </div>

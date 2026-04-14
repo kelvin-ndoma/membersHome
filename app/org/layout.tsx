@@ -3,7 +3,7 @@ import { getServerSession } from 'next-auth'
 import { redirect } from 'next/navigation'
 import { authOptions } from '@/lib/auth/auth.config'
 
-export default async function OrgLayout({
+export default async function OrgRootLayout({
   children,
 }: {
   children: React.ReactNode
@@ -14,9 +14,6 @@ export default async function OrgLayout({
     redirect('/login')
   }
 
-  return (
-    <div className="min-h-screen bg-gray-50">
-      {children}
-    </div>
-  )
+  // This layout just passes through - the [orgSlug]/layout.tsx handles the actual org layout
+  return <>{children}</>
 }

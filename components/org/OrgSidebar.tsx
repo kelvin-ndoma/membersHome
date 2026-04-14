@@ -2,7 +2,7 @@
 'use client'
 
 import Link from 'next/link'
-import { usePathname, useRouter } from 'next/navigation'
+import { usePathname } from 'next/navigation'
 import { 
   LayoutDashboard,
   Home,
@@ -10,6 +10,7 @@ import {
   Shield,
   Settings,
   ChevronRight,
+  Eye,
 } from 'lucide-react'
 
 interface OrgSidebarProps {
@@ -21,7 +22,6 @@ interface OrgSidebarProps {
 
 export default function OrgSidebar({ orgSlug, isAdmin, mobile, onClose }: OrgSidebarProps) {
   const pathname = usePathname()
-  const router = useRouter()
 
   const navigation = [
     { name: 'Dashboard', href: `/org/${orgSlug}/dashboard`, icon: LayoutDashboard, adminOnly: false },
@@ -40,8 +40,6 @@ export default function OrgSidebar({ orgSlug, isAdmin, mobile, onClose }: OrgSid
   const handleNavigation = (e: React.MouseEvent<HTMLAnchorElement>, href: string) => {
     e.preventDefault()
     if (onClose) onClose()
-    
-    // Force a hard navigation to clear all caches
     window.location.href = href
   }
 

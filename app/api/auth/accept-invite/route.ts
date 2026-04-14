@@ -115,6 +115,7 @@ export async function POST(req: NextRequest) {
         }
       })
 
+      // Redirect to org dashboard for org owners
       const redirectUrl = org ? `/org/${org.slug}/dashboard` : '/dashboard'
 
       return NextResponse.json({
@@ -125,7 +126,7 @@ export async function POST(req: NextRequest) {
       })
     }
 
-    // Check HouseMembership for house manager/staff invitations
+    // Check HouseMembership for house manager/staff/member invitations
     const houseMembership = await prisma.houseMembership.findFirst({
       where: {
         acceptanceToken: token,
@@ -210,13 +211,13 @@ export async function POST(req: NextRequest) {
         }
       })
 
-      const org = houseMembership.house.organization
       const house = houseMembership.house
 
+      // Redirect to PORTAL for house staff/members
       return NextResponse.json({
         success: true,
         message: 'House invitation accepted successfully!',
-        redirectUrl: `/org/${org.slug}/houses/${house.slug}/dashboard`,
+        redirectUrl: `/portal/${house.slug}/dashboard`,
         email: membershipUser.email,
       })
     }

@@ -142,34 +142,55 @@ export async function POST(
       )
     }
 
-    const {
-      title,
-      slug,
-      description,
-      imageUrl,
-      startDate,
-      endDate,
-      timezone,
-      location,
-      address,
-      onlineUrl,
-      type,
-      isFree,
-      capacity,
-      price,
-      currency,
-      memberOnly,
-    } = await req.json()
+    const data = await req.json()
 
-    if (!title || !startDate) {
+    // Validate required fields
+    if (!data.title) {
       return NextResponse.json(
-        { error: 'Title and start date are required' },
+        { error: 'Title is required' },
         { status: 400 }
       )
     }
 
+    if (!data.startDate) {
+      return NextResponse.json(
+        { error: 'Start date is required' },
+        { status: 400 }
+      )
+    }
+
+    if (!data.endDate) {
+      return NextResponse.json(
+        { error: 'End date is required' },
+        { status: 400 }
+      )
+    }
+
+    // Validate end date is after start date
+    const startDateTime = new Date(data.startDate)
+    const endDateTime = new Date(data.endDate)
+
+    if (endDateTime <= startDateTime) {
+      return NextResponse.json(
+        { error: 'End date must be after start date' },
+        { status: 400 }
+      )
+    }
+
+    // Validate RSVP deadline if provided
+    const settings = data.settings || {}
+    if (settings.rsvp?.deadline) {
+      const rsvpDeadlineDate = new Date(settings.rsvp.deadline)
+      if (rsvpDeadlineDate >= startDateTime) {
+        return NextResponse.json(
+          { error: 'RSVP deadline must be before the event starts' },
+          { status: 400 }
+        )
+      }
+    }
+
     // Generate slug if not provided
-    const eventSlug = slug || title.toLowerCase().replace(/[^a-z0-9]+/g, '-')
+    const eventSlug = data.slug || data.title.toLowerCase().replace(/[^a-z0-9]+/g, '-')
     
     // Check if slug is unique within org
     const existingEvent = await prisma.event.findFirst({
@@ -186,42 +207,62 @@ export async function POST(
       )
     }
 
-    const event = await prisma.event.create({
-      data: {
-        title,
-        slug: eventSlug,
-        description,
-        imageUrl,
-        startDate: new Date(startDate),
-        endDate: endDate ? new Date(endDate) : new Date(startDate),
-        timezone: timezone || 'UTC',
-        location,
-        address,
-        onlineUrl,
-        type: type || 'IN_PERSON',
-        isFree: isFree || false,
-        capacity,
-        price: price || 0,
-        currency: currency || 'USD',
-        memberOnly: memberOnly || false,
-        status: 'PUBLISHED',
-        publishedAt: new Date(),
-        organizationId: house.organizationId,
-        houseId: house.id,
-        createdBy: session.user.id,
+    // Build event data object
+    const eventData: any = {
+      title: data.title,
+      slug: eventSlug,
+      description: data.description || undefined,
+      imageUrl: data.imageUrl || undefined,
+      startDate: startDateTime,
+      endDate: endDateTime,
+      timezone: data.timezone || 'UTC',
+      location: data.location || undefined,
+      onlineUrl: data.onlineUrl || undefined,
+      type: data.type || 'IN_PERSON',
+      isFree: data.isFree ?? true,
+      price: data.price ?? 0,
+      currency: data.currency || 'USD',
+      memberOnly: data.memberOnly ?? false,
+      status: data.status || 'PUBLISHED',
+      organizationId: house.organizationId,
+      houseId: house.id,
+      createdBy: session.user.id,
+      settings: data.settings || {},
+    }
+
+    // Only add optional fields if they have values
+    if (data.capacity) {
+      eventData.capacity = parseInt(String(data.capacity))
+    }
+    if (data.address) {
+      try {
+        eventData.address = JSON.parse(data.address)
+      } catch {
+        // Ignore parsing errors
       }
+    }
+    if (data.status === 'PUBLISHED') {
+      eventData.publishedAt = new Date()
+    }
+
+    const event = await prisma.event.create({
+      data: eventData
     })
 
     await prisma.auditLog.create({
       data: {
         userId: session.user.id,
-        userEmail: session.user.email,
+        userEmail: session.user.email || '',
         action: 'EVENT_CREATED',
         entityType: 'EVENT',
         entityId: event.id,
         organizationId: house.organizationId,
         houseId: house.id,
-        metadata: { title, startDate }
+        metadata: { 
+          title: data.title, 
+          startDate: data.startDate, 
+          endDate: data.endDate,
+        }
       }
     })
 
@@ -232,7 +273,7 @@ export async function POST(
   } catch (error) {
     console.error('Create event error:', error)
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { error: 'Internal server error: ' + (error instanceof Error ? error.message : 'Unknown error') },
       { status: 500 }
     )
   }

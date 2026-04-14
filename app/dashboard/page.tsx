@@ -11,7 +11,6 @@ export default async function DashboardPage() {
     redirect('/login')
   }
 
-  // Get user with memberships to determine redirect
   const user = await prisma.user.findUnique({
     where: { id: session.user.id },
     include: {
@@ -21,47 +20,68 @@ export default async function DashboardPage() {
           organization: true,
           houseMemberships: {
             where: { status: 'ACTIVE' },
-            include: { house: true }
+            include: { 
+              house: {
+                include: {
+                  organization: true
+                }
+              }
+            }
           }
         }
       }
     }
   })
 
-  // Platform Admin -> Platform Dashboard
-  if (user?.platformRole === 'PLATFORM_ADMIN') {
+  if (!user) {
+    redirect('/login')
+  }
+
+  // 1. Platform Admin -> Platform Dashboard
+  if (user.platformRole === 'PLATFORM_ADMIN') {
     redirect('/platform/dashboard')
   }
 
-  // Organization Owner/Admin -> Organization Dashboard
-  const orgMembership = user?.memberships.find(
+  // 2. Check if user has any house membership
+  const houseMemberships = user.memberships.flatMap(m => m.houseMemberships)
+  
+  // 3. Check if user is org admin/owner
+  const orgAdminMembership = user.memberships.find(
     m => m.role === 'ORG_OWNER' || m.role === 'ORG_ADMIN'
   )
-  
-  if (orgMembership) {
-    redirect(`/org/${orgMembership.organization.slug}/dashboard`)
-  }
 
-  // House Manager/Staff -> House Dashboard
-  const houseMembership = user?.memberships.flatMap(m => m.houseMemberships).find(
-    hm => hm.role === 'HOUSE_MANAGER' || hm.role === 'HOUSE_ADMIN' || hm.role === 'HOUSE_STAFF'
+  // 4. Check if user is house manager/admin/staff (can access org)
+  const canAccessOrg = houseMemberships.some(
+    hm => ['HOUSE_MANAGER', 'HOUSE_ADMIN', 'HOUSE_STAFF'].includes(hm.role)
   )
 
-  if (houseMembership) {
-    redirect(`/portal/${houseMembership.house.slug}/dashboard`)
+  // 5. Determine redirect based on role
+  if (orgAdminMembership) {
+    // Org owners/admins go to org dashboard
+    redirect(`/org/${orgAdminMembership.organization.slug}/dashboard`)
   }
 
-  // Regular Member -> Member Portal (first house)
-  const firstHouse = user?.memberships.flatMap(m => m.houseMemberships)[0]
-  
-  if (firstHouse) {
-    redirect(`/portal/${firstHouse.house.slug}/dashboard`)
+  if (canAccessOrg) {
+    // House managers/admins/staff go to org dashboard (first house's org)
+    const primaryHouseMembership = houseMemberships.find(
+      hm => ['HOUSE_MANAGER', 'HOUSE_ADMIN', 'HOUSE_STAFF'].includes(hm.role)
+    )
+    if (primaryHouseMembership) {
+      const org = primaryHouseMembership.house.organization
+      redirect(`/org/${org.slug}/dashboard`)
+    }
   }
 
-  // Fallback - User with no memberships
+  if (houseMemberships.length > 0) {
+    // Regular members go directly to portal
+    const primaryHouse = houseMemberships[0].house
+    redirect(`/portal/${primaryHouse.slug}/dashboard`)
+  }
+
+  // Fallback - no memberships
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50">
-      <div className="text-center">
+      <div className="text-center max-w-md">
         <h1 className="text-2xl font-bold text-gray-900 mb-4">
           Welcome to MembersHome!
         </h1>

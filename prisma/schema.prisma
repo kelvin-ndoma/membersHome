@@ -236,6 +236,7 @@ enum MembershipStatus {
   PAUSED
   EXPIRED
   BANNED
+  CANCELLED  // ← ADD THIS
 }
 
 // ========================
@@ -603,6 +604,34 @@ model Event {
   status      EventStatus @default(DRAFT)
   publishedAt DateTime?
 
+  // Flexible event settings stored as JSON
+  // Example structure:
+  // {
+  //   "rsvp": {
+  //     "enabled": true,
+  //     "deadline": "2026-04-20T00:00:00Z",
+  //     "maxGuestsPerRsvp": 10,
+  //     "requireApproval": false,
+  //     "waitlistEnabled": true,
+  //     "waitlistCapacity": 50
+  //   },
+  //   "tickets": {
+  //     "maxPerPurchase": 8,
+  //     "allowTransfers": true,
+  //     "refundPolicy": "No refunds after 7 days before event"
+  //   },
+  //   "notifications": {
+  //     "sendReminders": true,
+  //     "reminderDays": [1, 3, 7],
+  //     "customMessage": "Looking forward to seeing you!"
+  //   },
+  //   "visibility": {
+  //     "showAttendeeCount": true,
+  //     "showRemainingTickets": true
+  //   }
+  // }
+  settings Json?
+
   organization Organization @relation(fields: [organizationId], references: [id])
   house        House?       @relation(fields: [houseId], references: [id])
   creator      User         @relation("EventCreator", fields: [createdBy], references: [id])
@@ -649,10 +678,10 @@ model RSVP {
   amountPaid Float?  @default(0)
   currency   String? @default("USD")
 
-  event        Event           @relation(fields: [eventId], references: [id])
+  event           Event           @relation(fields: [eventId], references: [id])
   houseMembership HouseMembership @relation(fields: [houseMembershipId], references: [id])
-  organization Organization     @relation(fields: [organizationId], references: [id])
-  house        House?          @relation(fields: [houseId], references: [id])
+  organization    Organization    @relation(fields: [organizationId], references: [id])
+  house           House?          @relation(fields: [houseId], references: [id])
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

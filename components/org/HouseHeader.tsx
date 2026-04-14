@@ -13,6 +13,8 @@ import {
   LayoutDashboard,
   ArrowLeft,
   Building2,
+  Eye,
+  ExternalLink,
 } from 'lucide-react'
 import { signOut } from 'next-auth/react'
 import HouseMobileSidebar from './HouseMobileSidebar'
@@ -97,6 +99,18 @@ export default function HouseHeader({ orgSlug, houseSlug, houseName, userRole }:
             </div>
 
             <div className="flex items-center gap-2">
+              {/* Portal Access Button */}
+              <Link
+                href={`/portal/${houseSlug}/dashboard`}
+                target="_blank"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-purple-600 bg-purple-50 rounded-lg hover:bg-purple-100 transition border border-purple-200"
+                title="View Member Portal"
+              >
+                <Eye className="h-4 w-4" />
+                <span className="hidden sm:inline">View Portal</span>
+                <ExternalLink className="h-3 w-3" />
+              </Link>
+
               <Link
                 href="/dashboard"
                 className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition"

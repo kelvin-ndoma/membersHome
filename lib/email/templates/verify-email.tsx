@@ -19,25 +19,42 @@ interface VerifyEmailProps {
 export const VerifyEmail = ({ name, verifyUrl }: VerifyEmailProps) => (
   <Html>
     <Head />
-    <Preview>Verify your email address</Preview>
+    <Preview>Verify your email address for MembersHome</Preview>
     <Body style={main}>
       <Container style={container}>
         <Heading style={h1}>Verify Your Email</Heading>
+        
         <Text style={text}>Hi {name},</Text>
+        
         <Text style={text}>
-          Please verify your email address by clicking the button below.
+          Thanks for signing up! Please verify your email address to get started.
         </Text>
+
         <Section style={buttonContainer}>
           <Button style={button} href={verifyUrl}>
-            Verify Email
+            Verify Email Address
           </Button>
         </Section>
+
+        <Text style={text}>
+          Or copy and paste this link into your browser:
+        </Text>
+        
+        <Text style={linkText}>
+          {verifyUrl}
+        </Text>
+
+        <Section style={divider} />
+
+        <Text style={footerText}>
+          If you didn't create an account, you can safely ignore this email.
+        </Text>
       </Container>
     </Body>
   </Html>
 )
 
-// Reuse the same styles as welcome email
+// Styles (same as above)
 const main = {
   backgroundColor: '#f6f9fc',
   fontFamily: '-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Ubuntu,sans-serif',
@@ -46,22 +63,26 @@ const main = {
 const container = {
   backgroundColor: '#ffffff',
   margin: '0 auto',
-  padding: '20px 0 48px',
-  marginBottom: '64px',
+  padding: '40px 20px',
+  maxWidth: '600px',
+  borderRadius: '8px',
+  boxShadow: '0 2px 4px rgba(0, 0, 0, 0.1)',
 }
 
 const h1 = {
-  color: '#333',
-  fontSize: '24px',
+  color: '#1a1a1a',
+  fontSize: '28px',
   fontWeight: 'bold',
-  margin: '40px 0',
+  margin: '0 0 20px',
   padding: '0',
+  textAlign: 'center' as const,
 }
 
 const text = {
   color: '#333',
   fontSize: '16px',
   lineHeight: '26px',
+  margin: '16px 0',
 }
 
 const buttonContainer = {
@@ -71,12 +92,33 @@ const buttonContainer = {
 
 const button = {
   backgroundColor: '#3B82F6',
-  borderRadius: '5px',
+  borderRadius: '8px',
   color: '#fff',
   fontSize: '16px',
   fontWeight: 'bold',
   textDecoration: 'none',
   textAlign: 'center' as const,
   display: 'inline-block',
-  padding: '12px 24px',
+  padding: '14px 32px',
+}
+
+const linkText = {
+  color: '#3B82F6',
+  fontSize: '14px',
+  lineHeight: '20px',
+  margin: '8px 0 24px',
+  wordBreak: 'break-all' as const,
+}
+
+const divider = {
+  borderTop: '1px solid #e5e7eb',
+  margin: '32px 0',
+}
+
+const footerText = {
+  color: '#6b7280',
+  fontSize: '13px',
+  lineHeight: '20px',
+  margin: '16px 0',
+  textAlign: 'center' as const,
 }

@@ -17,6 +17,9 @@ import {
   Lock,
   Save,
   Trash2,
+  Settings2,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react'
 import ImageUpload from '@/components/ui/ImageUpload'
 
@@ -26,7 +29,7 @@ const eventSchema = z.object({
   description: z.string().optional(),
   imageUrl: z.string().optional(),
   startDate: z.string().min(1, 'Start date is required'),
-  endDate: z.string().optional(),
+  endDate: z.string().min(1, 'End date is required'),
   timezone: z.string().default('UTC'),
   location: z.string().optional(),
   address: z.string().optional(),
@@ -38,6 +41,20 @@ const eventSchema = z.object({
   currency: z.string().default('USD'),
   memberOnly: z.boolean().default(false),
   status: z.enum(['DRAFT', 'PUBLISHED', 'CANCELLED']).default('DRAFT'),
+  
+  // Structured settings
+  settings: z.object({
+    rsvp: z.object({
+      enabled: z.boolean().default(true),
+      deadline: z.string().optional(),
+      maxGuestsPerRsvp: z.number().min(1).default(2),
+      requireApproval: z.boolean().default(false),
+    }).default({}),
+    tickets: z.object({
+      maxPerPurchase: z.number().min(1).default(5),
+      allowPurchases: z.boolean().default(true),
+    }).default({}),
+  }).default({}),
 })
 
 type EventForm = z.infer<typeof eventSchema>
@@ -49,7 +66,7 @@ interface EventData {
   description: string | null
   imageUrl: string | null
   startDate: string
-  endDate: string | null
+  endDate: string
   timezone: string
   location: string | null
   address: any
@@ -61,6 +78,7 @@ interface EventData {
   currency: string
   memberOnly: boolean
   status: string
+  settings?: any
   _count?: {
     rsvps: number
     tickets: number
@@ -80,6 +98,7 @@ export default function EditEventPage({ params }: EditEventPageProps) {
   const [isLoading, setIsLoading] = useState(false)
   const [isLoadingEvent, setIsLoadingEvent] = useState(true)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [showAdvanced, setShowAdvanced] = useState(false)
   const [eventData, setEventData] = useState<EventData | null>(null)
   
   const {
@@ -98,12 +117,27 @@ export default function EditEventPage({ params }: EditEventPageProps) {
       status: 'DRAFT',
       currency: 'USD',
       timezone: 'UTC',
+      settings: {
+        rsvp: {
+          enabled: true,
+          maxGuestsPerRsvp: 2,
+          requireApproval: false,
+        },
+        tickets: {
+          maxPerPurchase: 5,
+          allowPurchases: true,
+        },
+      },
     }
   })
 
   const title = watch('title')
   const eventType = watch('type')
   const isFree = watch('isFree')
+  const startDate = watch('startDate')
+  const endDate = watch('endDate')
+  const rsvpEnabled = watch('settings.rsvp.enabled')
+  const allowTicketPurchases = watch('settings.tickets.allowPurchases')
 
   // Fetch event data
   useEffect(() => {
@@ -127,13 +161,17 @@ export default function EditEventPage({ params }: EditEventPageProps) {
           return d.toISOString().slice(0, 16)
         }
 
+        const settings = event.settings || {}
+        const rsvp = settings.rsvp || {}
+        const tickets = settings.tickets || {}
+
         reset({
           title: event.title,
           slug: event.slug,
           description: event.description || '',
           imageUrl: event.imageUrl || '',
           startDate: formatDateForInput(event.startDate),
-          endDate: event.endDate ? formatDateForInput(event.endDate) : '',
+          endDate: formatDateForInput(event.endDate),
           timezone: event.timezone || 'UTC',
           location: event.location || '',
           address: event.address ? JSON.stringify(event.address) : '',
@@ -145,7 +183,24 @@ export default function EditEventPage({ params }: EditEventPageProps) {
           currency: event.currency || 'USD',
           memberOnly: event.memberOnly,
           status: event.status,
+          settings: {
+            rsvp: {
+              enabled: rsvp.enabled ?? true,
+              deadline: rsvp.deadline ? formatDateForInput(rsvp.deadline) : '',
+              maxGuestsPerRsvp: rsvp.maxGuestsPerRsvp ?? 2,
+              requireApproval: rsvp.requireApproval ?? false,
+            },
+            tickets: {
+              maxPerPurchase: tickets.maxPerPurchase ?? 5,
+              allowPurchases: tickets.allowPurchases ?? true,
+            },
+          },
         })
+        
+        // Auto-expand advanced settings if RSVP or tickets are configured
+        if (rsvp.enabled || tickets.allowPurchases) {
+          setShowAdvanced(true)
+        }
       } catch (error) {
         toast.error('Failed to load event')
         router.push(`/org/${params.orgSlug}/houses/${params.houseSlug}/events`)
@@ -165,6 +220,20 @@ export default function EditEventPage({ params }: EditEventPageProps) {
   }
 
   const onSubmit = async (data: EventForm) => {
+    // Validate end date is after start date
+    if (new Date(data.endDate) <= new Date(data.startDate)) {
+      toast.error('End date must be after start date')
+      return
+    }
+
+    // Validate RSVP deadline is before start date if set
+    if (data.settings?.rsvp?.deadline) {
+      if (new Date(data.settings.rsvp.deadline) >= new Date(data.startDate)) {
+        toast.error('RSVP deadline must be before the event starts')
+        return
+      }
+    }
+
     setIsLoading(true)
     
     try {
@@ -311,41 +380,76 @@ export default function EditEventPage({ params }: EditEventPageProps) {
           </div>
 
           {/* Date & Time */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                Start Date & Time *
-              </label>
-              <div className="relative">
-                <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-                <input
-                  {...register('startDate')}
-                  type="datetime-local"
-                  className="block w-full pl-10 pr-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                />
+          <div className="space-y-4">
+            <h3 className="text-lg font-semibold text-gray-900">Date & Time</h3>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                  Start Date & Time *
+                </label>
+                <div className="relative">
+                  <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                  <input
+                    {...register('startDate')}
+                    type="datetime-local"
+                    className="block w-full pl-10 pr-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  />
+                </div>
+                {errors.startDate && (
+                  <p className="mt-1 text-sm text-red-600">{errors.startDate.message}</p>
+                )}
               </div>
-              {errors.startDate && (
-                <p className="mt-1 text-sm text-red-600">{errors.startDate.message}</p>
-              )}
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                  End Date & Time *
+                </label>
+                <div className="relative">
+                  <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                  <input
+                    {...register('endDate')}
+                    type="datetime-local"
+                    className="block w-full pl-10 pr-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  />
+                </div>
+                {errors.endDate && (
+                  <p className="mt-1 text-sm text-red-600">{errors.endDate.message}</p>
+                )}
+              </div>
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                End Date & Time (Optional)
-              </label>
-              <div className="relative">
-                <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-                <input
-                  {...register('endDate')}
-                  type="datetime-local"
-                  className="block w-full pl-10 pr-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                />
+            {/* Date Range Display */}
+            {startDate && endDate && (
+              <div className="bg-blue-50 rounded-lg p-3 border border-blue-200">
+                <p className="text-sm text-blue-800">
+                  <strong>Event Duration:</strong>{' '}
+                  {new Date(startDate).toLocaleDateString('en-US', {
+                    weekday: 'long',
+                    month: 'long',
+                    day: 'numeric',
+                    year: 'numeric'
+                  })}
+                  {' at '}
+                  {new Date(startDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  {' - '}
+                  {new Date(endDate).toLocaleDateString('en-US', {
+                    weekday: 'long',
+                    month: 'long',
+                    day: 'numeric',
+                    year: 'numeric'
+                  })}
+                  {' at '}
+                  {new Date(endDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                </p>
               </div>
-            </div>
+            )}
           </div>
 
           {/* Location */}
           <div className="space-y-4">
+            <h3 className="text-lg font-semibold text-gray-900">Location</h3>
+            
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Event Type *
@@ -430,63 +534,172 @@ export default function EditEventPage({ params }: EditEventPageProps) {
           </div>
 
           {/* Pricing & Capacity */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="flex items-center gap-2 mb-3">
-                <input
-                  {...register('isFree')}
-                  type="checkbox"
-                  className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                />
-                <span className="text-sm font-medium text-gray-700">This is a free event</span>
-              </label>
+          <div className="space-y-4">
+            <h3 className="text-lg font-semibold text-gray-900">Pricing & Capacity</h3>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="flex items-center gap-2 mb-3">
+                  <input
+                    {...register('isFree')}
+                    type="checkbox"
+                    className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                  />
+                  <span className="text-sm font-medium text-gray-700">This is a free event</span>
+                </label>
 
-              {!isFree && (
-                <div className="flex gap-2">
-                  <div className="flex-1">
-                    <label className="block text-xs text-gray-500 mb-1">Price</label>
-                    <input
-                      {...register('price', { valueAsNumber: true })}
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      className="block w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                      placeholder="0.00"
-                    />
+                {!isFree && (
+                  <div className="flex gap-2">
+                    <div className="flex-1">
+                      <label className="block text-xs text-gray-500 mb-1">Price</label>
+                      <input
+                        {...register('price', { valueAsNumber: true })}
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        className="block w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        placeholder="0.00"
+                      />
+                    </div>
+                    <div className="w-24">
+                      <label className="block text-xs text-gray-500 mb-1">Currency</label>
+                      <select
+                        {...register('currency')}
+                        className="block w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      >
+                        <option value="USD">USD</option>
+                        <option value="EUR">EUR</option>
+                        <option value="GBP">GBP</option>
+                      </select>
+                    </div>
                   </div>
-                  <div className="w-24">
-                    <label className="block text-xs text-gray-500 mb-1">Currency</label>
-                    <select
-                      {...register('currency')}
-                      className="block w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    >
-                      <option value="USD">USD</option>
-                      <option value="EUR">EUR</option>
-                      <option value="GBP">GBP</option>
-                    </select>
-                  </div>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                  Capacity (Optional)
+                </label>
+                <div className="relative">
+                  <Users className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                  <input
+                    {...register('capacity', { valueAsNumber: true })}
+                    type="number"
+                    min="1"
+                    className="block w-full pl-10 pr-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="Unlimited"
+                  />
                 </div>
-              )}
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                Capacity (Optional)
-              </label>
-              <div className="relative">
-                <Users className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-                <input
-                  {...register('capacity', { valueAsNumber: true })}
-                  type="number"
-                  min="1"
-                  className="block w-full pl-10 pr-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  placeholder="Unlimited"
-                />
               </div>
             </div>
           </div>
 
-          {/* Settings */}
+          {/* Advanced Settings */}
+          <div className="space-y-4 border-t border-gray-100 pt-4">
+            <button
+              type="button"
+              onClick={() => setShowAdvanced(!showAdvanced)}
+              className="flex items-center gap-2 text-sm font-medium text-gray-700 hover:text-gray-900"
+            >
+              <Settings2 className="h-4 w-4" />
+              Advanced Settings
+              {showAdvanced ? (
+                <ChevronUp className="h-4 w-4" />
+              ) : (
+                <ChevronDown className="h-4 w-4" />
+              )}
+            </button>
+
+            {showAdvanced && (
+              <div className="space-y-6 bg-gray-50 rounded-lg p-4">
+                {/* RSVP Settings */}
+                <div className="space-y-3">
+                  <h4 className="font-medium text-gray-900">RSVP Settings</h4>
+                  
+                  <label className="flex items-center gap-2">
+                    <input
+                      {...register('settings.rsvp.enabled')}
+                      type="checkbox"
+                      className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                    />
+                    <span className="text-sm text-gray-700">Enable RSVP for this event</span>
+                  </label>
+
+                  {rsvpEnabled && (
+                    <>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                          RSVP Deadline (Optional)
+                        </label>
+                        <input
+                          {...register('settings.rsvp.deadline')}
+                          type="datetime-local"
+                          className="block w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                        />
+                        <p className="text-xs text-gray-500 mt-1">
+                          After this date, members cannot RSVP
+                        </p>
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                          Max Guests per RSVP
+                        </label>
+                        <input
+                          {...register('settings.rsvp.maxGuestsPerRsvp', { valueAsNumber: true })}
+                          type="number"
+                          min="1"
+                          className="block w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
+
+                      <label className="flex items-center gap-2">
+                        <input
+                          {...register('settings.rsvp.requireApproval')}
+                          type="checkbox"
+                          className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                        />
+                        <span className="text-sm text-gray-700">Require approval for RSVPs</span>
+                      </label>
+                    </>
+                  )}
+                </div>
+
+                {/* Ticket Settings */}
+                <div className="space-y-3 pt-3 border-t border-gray-200">
+                  <h4 className="font-medium text-gray-900">Ticket Purchase Limits</h4>
+                  
+                  <label className="flex items-center gap-2">
+                    <input
+                      {...register('settings.tickets.allowPurchases')}
+                      type="checkbox"
+                      className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                    />
+                    <span className="text-sm text-gray-700">Allow ticket purchases</span>
+                  </label>
+
+                  {allowTicketPurchases && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                        Max Tickets per Purchase
+                      </label>
+                      <input
+                        {...register('settings.tickets.maxPerPurchase', { valueAsNumber: true })}
+                        type="number"
+                        min="1"
+                        className="block w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                      />
+                      <p className="text-xs text-gray-500 mt-1">
+                        Maximum number of tickets a single person can purchase
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Member Only Setting */}
           <div className="space-y-3">
             <label className="flex items-center gap-2">
               <input

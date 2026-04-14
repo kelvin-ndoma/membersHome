@@ -8,6 +8,8 @@ import {
   TrendingUp,
   Plus,
   ArrowRight,
+  Eye,
+  ExternalLink,
 } from 'lucide-react'
 
 interface HouseDashboardPageProps {
@@ -75,11 +77,25 @@ export default async function HouseDashboardPage({ params }: HouseDashboardPageP
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">{house.name} Dashboard</h1>
-        <p className="text-sm text-gray-500 mt-1">
-          {house.organization.name} • {house.description || 'No description'}
-        </p>
+      {/* Header with Portal Button */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">{house.name} Dashboard</h1>
+          <p className="text-sm text-gray-500 mt-1">
+            {house.organization.name} • {house.description || 'No description'}
+          </p>
+        </div>
+        
+        {/* Portal Access Button */}
+        <Link
+          href={`/portal/${params.houseSlug}/dashboard`}
+          target="_blank"
+          className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-purple-600 bg-purple-50 rounded-lg hover:bg-purple-100 transition border border-purple-200"
+        >
+          <Eye className="h-4 w-4" />
+          View Member Portal
+          <ExternalLink className="h-3 w-3" />
+        </Link>
       </div>
 
       {/* Stats */}

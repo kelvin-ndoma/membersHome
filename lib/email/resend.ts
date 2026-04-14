@@ -19,5 +19,13 @@ export type EmailTemplate =
   | 'payment-receipt'
   | 'event-reminder'
   | 'announcement'
-  | 'card-collection'      // NEW
+  | 'card-collection'
   | 'payment-failed'
+  | 'staff-invitation'
+  | 'member-invitation'
+  | 'membership-cancellation-requested'
+  | 'membership-cancelled'
+  | 'membership-paused'
+  | 'membership-resumed'
+  | 'membership-cancellation-admin-notification'
+  | 'form-submission'  // Added this
