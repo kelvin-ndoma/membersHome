@@ -14,6 +14,8 @@ import {
   Shield,
   Crown,
   Eye,
+  Package,
+  Filter,
 } from 'lucide-react'
 import InviteMemberModal from '@/components/house/InviteMemberModal'
 
@@ -32,6 +34,7 @@ export default function MembersPage({ params }: MembersPageProps) {
   const [total, setTotal] = useState(0)
   const [roleCounts, setRoleCounts] = useState<any[]>([])
   const [statusCounts, setStatusCounts] = useState<any[]>([])
+  const [planCounts, setPlanCounts] = useState<any[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [house, setHouse] = useState<any>(null)
 
@@ -40,10 +43,11 @@ export default function MembersPage({ params }: MembersPageProps) {
   const search = searchParams.get('search') || ''
   const role = searchParams.get('role')
   const status = searchParams.get('status') || 'ACTIVE'
+  const planId = searchParams.get('planId')
 
   useEffect(() => {
     fetchMembers()
-  }, [page, search, role, status])
+  }, [page, search, role, status, planId])
 
   const fetchMembers = async () => {
     setIsLoading(true)
@@ -54,6 +58,7 @@ export default function MembersPage({ params }: MembersPageProps) {
         search,
         status,
         ...(role && { role }),
+        ...(planId && { planId }),
       })
 
       const response = await fetch(`/api/org/${params.orgSlug}/houses/${params.houseSlug}/members?${queryParams}`)
@@ -64,6 +69,7 @@ export default function MembersPage({ params }: MembersPageProps) {
       setTotal(data.pagination.total)
       setRoleCounts(data.roleCounts || [])
       setStatusCounts(data.statusCounts || [])
+      setPlanCounts(data.planCounts || [])
     } catch (error) {
       console.error('Failed to fetch members:', error)
     } finally {
@@ -87,9 +93,6 @@ export default function MembersPage({ params }: MembersPageProps) {
       <span className={`text-xs px-2 py-1 rounded-full inline-flex items-center gap-1 ${config.color}`}>
         <Icon className="h-3 w-3" />
         {config.label}
-        {['HOUSE_MANAGER', 'HOUSE_ADMIN', 'HOUSE_STAFF'].includes(memberRole) && (
-          <span className="ml-1 text-xs opacity-75">(Free)</span>
-        )}
       </span>
     )
   }
@@ -107,6 +110,38 @@ export default function MembersPage({ params }: MembersPageProps) {
     return (
       <span className={`text-xs px-2 py-1 rounded-full ${config.color}`}>
         {config.label}
+      </span>
+    )
+  }
+
+  const getPlanBadge = (membershipItem: any) => {
+    if (!membershipItem?.membershipPlan) {
+      return (
+        <span className="text-xs px-2 py-1 rounded-full bg-gray-100 text-gray-600">
+          No Plan
+        </span>
+      )
+    }
+    
+    const plan = membershipItem.membershipPlan
+    const typeColors: Record<string, string> = {
+      STANDARD: 'bg-blue-100 text-blue-800',
+      PREMIUM: 'bg-purple-100 text-purple-800',
+      VIP: 'bg-amber-100 text-amber-800',
+      CUSTOM: 'bg-pink-100 text-pink-800',
+    }
+    
+    const color = typeColors[plan.type] || 'bg-gray-100 text-gray-800'
+    
+    return (
+      <span className={`text-xs px-2 py-1 rounded-full inline-flex items-center gap-1 ${color}`}>
+        <Package className="h-3 w-3" />
+        {plan.name}
+        {membershipItem.planPrice && (
+          <span className="ml-1 opacity-75">
+            ({membershipItem.planPrice.currency} {membershipItem.planPrice.amount})
+          </span>
+        )}
       </span>
     )
   }
@@ -131,7 +166,7 @@ export default function MembersPage({ params }: MembersPageProps) {
           </Link>
           <Link
             href={`/org/${params.orgSlug}/houses/${params.houseSlug}/members/export`}
-            className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
+            className="inline-flex items-center gap-2 px-4 py-2 text13-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
           >
             <Download className="h-4 w-4" />
             Export
@@ -148,9 +183,9 @@ export default function MembersPage({ params }: MembersPageProps) {
 
       {/* Filters */}
       <div className="bg-white rounded-xl border border-gray-200 p-4">
-        <div className="flex flex-wrap items-center gap-4">
+        <div className="space-y-4">
           {/* Search */}
-          <form className="flex-1 min-w-[300px]">
+          <form className="w-full">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
               <input
@@ -164,42 +199,76 @@ export default function MembersPage({ params }: MembersPageProps) {
           </form>
 
           {/* Role Filter */}
-          <div className="flex gap-2">
-            <Link
-              href={`?${new URLSearchParams({ ...Object.fromEntries(searchParams), role: '' })}`}
-              className={`px-3 py-1.5 text-sm font-medium rounded-lg transition ${
-                !role ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
-            >
-              All Roles
-            </Link>
-            {roleCounts.map((r) => (
+          <div>
+            <p className="text-xs text-gray-500 mb-2">Filter by Role</p>
+            <div className="flex flex-wrap gap-2">
               <Link
-                key={r.role}
-                href={`?${new URLSearchParams({ ...Object.fromEntries(searchParams), role: r.role })}`}
+                href={`?${new URLSearchParams({ ...Object.fromEntries(searchParams), role: '' })}`}
                 className={`px-3 py-1.5 text-sm font-medium rounded-lg transition ${
-                  role === r.role ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  !role ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                 }`}
               >
-                {r.role.replace('HOUSE_', '')} ({r._count})
+                All Roles
               </Link>
-            ))}
+              {roleCounts.map((r) => (
+                <Link
+                  key={r.role}
+                  href={`?${new URLSearchParams({ ...Object.fromEntries(searchParams), role: r.role })}`}
+                  className={`px-3 py-1.5 text-sm font-medium rounded-lg transition ${
+                    role === r.role ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  }`}
+                >
+                  {r.role.replace('HOUSE_', '')} ({r._count})
+                </Link>
+              ))}
+            </div>
           </div>
 
           {/* Status Filter */}
-          <div className="flex gap-2">
-            {statusCounts.map((s) => (
-              <Link
-                key={s.status}
-                href={`?${new URLSearchParams({ ...Object.fromEntries(searchParams), status: s.status })}`}
-                className={`px-3 py-1.5 text-sm font-medium rounded-lg transition ${
-                  status === s.status ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                }`}
-              >
-                {s.status} ({s._count})
-              </Link>
-            ))}
+          <div>
+            <p className="text-xs text-gray-500 mb-2">Filter by Status</p>
+            <div className="flex flex-wrap gap-2">
+              {statusCounts.map((s) => (
+                <Link
+                  key={s.status}
+                  href={`?${new URLSearchParams({ ...Object.fromEntries(searchParams), status: s.status })}`}
+                  className={`px-3 py-1.5 text-sm font-medium rounded-lg transition ${
+                    status === s.status ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  }`}
+                >
+                  {s.status} ({s._count})
+                </Link>
+              ))}
+            </div>
           </div>
+
+          {/* Plan Filter */}
+          {planCounts.length > 0 && (
+            <div>
+              <p className="text-xs text-gray-500 mb-2">Filter by Plan</p>
+              <div className="flex flex-wrap gap-2">
+                <Link
+                  href={`?${new URLSearchParams({ ...Object.fromEntries(searchParams), planId: '' })}`}
+                  className={`px-3 py-1.5 text-sm font-medium rounded-lg transition ${
+                    !planId ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  }`}
+                >
+                  All Plans
+                </Link>
+                {planCounts.map((p) => (
+                  <Link
+                    key={p.planId}
+                    href={`?${new URLSearchParams({ ...Object.fromEntries(searchParams), planId: p.planId })}`}
+                    className={`px-3 py-1.5 text-sm font-medium rounded-lg transition ${
+                      planId === p.planId ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    }`}
+                  >
+                    {p.planName} ({p._count})
+                  </Link>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -219,6 +288,9 @@ export default function MembersPage({ params }: MembersPageProps) {
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Role
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Plan
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Status
@@ -258,6 +330,9 @@ export default function MembersPage({ params }: MembersPageProps) {
                     </td>
                     <td className="px-6 py-4">
                       {getRoleBadge(member.role)}
+                    </td>
+                    <td className="px-6 py-4">
+                      {getPlanBadge(member.membershipItem)}
                     </td>
                     <td className="px-6 py-4">
                       {getStatusBadge(member.status)}

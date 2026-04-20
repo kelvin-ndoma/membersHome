@@ -20,6 +20,8 @@ const generalSchema = z.object({
 type GeneralForm = z.infer<typeof generalSchema>
 
 interface GeneralSettingsProps {
+  orgSlug: string
+  houseSlug: string
   house: {
     id: string
     name: string
@@ -29,7 +31,7 @@ interface GeneralSettingsProps {
   }
 }
 
-export default function GeneralSettings({ house }: GeneralSettingsProps) {
+export default function GeneralSettings({ orgSlug, houseSlug, house }: GeneralSettingsProps) {
   const router = useRouter()
   const [isLoading, setIsLoading] = useState(false)
   
@@ -62,10 +64,16 @@ export default function GeneralSettings({ house }: GeneralSettingsProps) {
     setIsLoading(true)
     
     try {
-      const response = await fetch(`/api/houses/${house.id}`, {
+      const response = await fetch(`/api/org/${orgSlug}/houses/${houseSlug}/settings`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data),
+        body: JSON.stringify({
+          general: {
+            name: data.name,
+            description: data.description,
+            logoUrl: data.logoUrl,
+          }
+        }),
       })
 
       const result = await response.json()

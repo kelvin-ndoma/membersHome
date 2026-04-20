@@ -1,7 +1,11 @@
 // app/(platform)/platform/organizations/page.tsx
 import Link from 'next/link'
 import { prisma } from '@/lib/prisma'
-import { Building2, Plus, MoreVertical, Users, Calendar, Home } from 'lucide-react'
+import { Building2, Plus, MoreVertical, Users, Calendar, Home, Globe, CreditCard } from 'lucide-react'
+import { StatCard } from '@/components/ui/StatCard'
+import { ThemeCard } from '@/components/ui/ThemeCard'
+import { ThemeBadge } from '@/components/ui/ThemeBadge'
+import { ThemeButton } from '@/components/ui/ThemeButton'
 
 export default async function OrganizationsPage() {
   const organizations = await prisma.organization.findMany({
@@ -22,7 +26,8 @@ export default async function OrganizationsPage() {
             select: {
               id: true,
               name: true,
-              email: true
+              email: true,
+              image: true,
             }
           }
         },
@@ -32,166 +37,179 @@ export default async function OrganizationsPage() {
     orderBy: { createdAt: 'desc' }
   })
 
+  const activeOrgs = organizations.filter(org => org.status === 'ACTIVE').length
+  const trialOrgs = organizations.filter(org => org.status === 'TRIAL').length
+  const totalMembers = organizations.reduce((acc, org) => acc + org._count.memberships, 0)
+
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Organizations</h1>
           <p className="text-sm text-gray-500 mt-1">
             Manage all organizations on the platform
           </p>
         </div>
-        <Link
-          href="/platform/organizations/create"
-          className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition"
-        >
-          <Plus className="h-4 w-4" />
-          Create Organization
+        <Link href="/platform/organizations/create">
+          <ThemeButton>
+            <Plus className="h-4 w-4 mr-2" />
+            Create Organization
+          </ThemeButton>
         </Link>
       </div>
 
-      {/* Stats Summary */}
+      {/* Stats Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="bg-white rounded-xl border border-gray-200 p-5">
-          <div className="flex items-center justify-between">
-            <p className="text-sm text-gray-500">Total Organizations</p>
-            <Building2 className="h-5 w-5 text-blue-600" />
-          </div>
-          <p className="text-2xl font-bold text-gray-900 mt-2">{organizations.length}</p>
-        </div>
-        
-        <div className="bg-white rounded-xl border border-gray-200 p-5">
-          <div className="flex items-center justify-between">
-            <p className="text-sm text-gray-500">Active Organizations</p>
-            <div className="h-5 w-5 rounded-full bg-green-500"></div>
-          </div>
-          <p className="text-2xl font-bold text-gray-900 mt-2">
-            {organizations.filter(org => org.status === 'ACTIVE').length}
-          </p>
-        </div>
-        
-        <div className="bg-white rounded-xl border border-gray-200 p-5">
-          <div className="flex items-center justify-between">
-            <p className="text-sm text-gray-500">Trial Organizations</p>
-            <div className="h-5 w-5 rounded-full bg-yellow-500"></div>
-          </div>
-          <p className="text-2xl font-bold text-gray-900 mt-2">
-            {organizations.filter(org => org.status === 'TRIAL').length}
-          </p>
-        </div>
-        
-        <div className="bg-white rounded-xl border border-gray-200 p-5">
-          <div className="flex items-center justify-between">
-            <p className="text-sm text-gray-500">Total Members</p>
-            <Users className="h-5 w-5 text-purple-600" />
-          </div>
-          <p className="text-2xl font-bold text-gray-900 mt-2">
-            {organizations.reduce((acc, org) => acc + org._count.memberships, 0)}
-          </p>
-        </div>
+        <StatCard
+          name="Total Organizations"
+          value={organizations.length}
+          icon="Building2"
+          color="primary"
+        />
+        <StatCard
+          name="Active Organizations"
+          value={activeOrgs}
+          icon="CheckCircle"
+          color="secondary"
+        />
+        <StatCard
+          name="Trial Organizations"
+          value={trialOrgs}
+          icon="Clock"
+          color="accent"
+        />
+        <StatCard
+          name="Total Members"
+          value={totalMembers}
+          icon="Users"
+          color="primary"
+        />
       </div>
 
       {/* Organizations Grid */}
       {organizations.length === 0 ? (
-        <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
-          <Building2 className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-          <h3 className="text-lg font-medium text-gray-900 mb-2">No organizations yet</h3>
-          <p className="text-gray-500 mb-4">Get started by creating your first organization.</p>
-          <Link
-            href="/platform/organizations/create"
-            className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition"
-          >
-            <Plus className="h-4 w-4" />
-            Create Organization
+        <ThemeCard
+          title="No organizations yet"
+          description="Get started by creating your first organization."
+          icon="Building2"
+          color="primary"
+        >
+          <Link href="/platform/organizations/create">
+            <ThemeButton className="mt-4">
+              <Plus className="h-4 w-4 mr-2" />
+              Create Organization
+            </ThemeButton>
           </Link>
-        </div>
+        </ThemeCard>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
           {organizations.map((org) => {
             const owner = org.memberships[0]?.user
             
             return (
               <div 
                 key={org.id} 
-                className="bg-white rounded-xl border border-gray-200 p-6 hover:shadow-lg transition group"
+                className="bg-white rounded-xl border border-gray-200 overflow-hidden hover:shadow-lg hover:border-theme-primary/30 transition-all group"
               >
-                <div className="flex items-start justify-between">
-                  <Link 
-                    href={`/platform/organizations/${org.id}`}
-                    className="flex items-center gap-3 flex-1"
-                  >
-                    <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-indigo-500 rounded-lg flex items-center justify-center flex-shrink-0">
-                      {org.logoUrl ? (
-                        <img src={org.logoUrl} alt={org.name} className="w-8 h-8 rounded object-cover" />
-                      ) : (
-                        <Building2 className="h-6 w-6 text-white" />
-                      )}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <h3 className="text-lg font-semibold text-gray-900 group-hover:text-blue-600 truncate">
-                        {org.name}
-                      </h3>
-                      <p className="text-sm text-gray-500 truncate">{org.slug}</p>
-                    </div>
-                  </Link>
-                  <div className="relative">
-                    <button className="p-1.5 hover:bg-gray-100 rounded-lg transition">
+                {/* Card Header with Logo */}
+                <div className="p-5">
+                  <div className="flex items-start justify-between">
+                    <Link 
+                      href={`/platform/organizations/${org.id}`}
+                      className="flex items-center gap-3 flex-1"
+                    >
+                      <div 
+                        className="w-12 h-12 rounded-lg flex items-center justify-center flex-shrink-0"
+                        style={{ 
+                          background: `linear-gradient(135deg, var(--theme-primary) 0%, var(--theme-secondary) 100%)` 
+                        }}
+                      >
+                        {org.logoUrl ? (
+                          <img src={org.logoUrl} alt={org.name} className="w-8 h-8 rounded object-cover" />
+                        ) : (
+                          <Building2 className="h-6 w-6 text-white" />
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <h3 className="text-lg font-semibold text-gray-900 group-hover:text-theme-primary truncate transition-colors">
+                          {org.name}
+                        </h3>
+                        <p className="text-sm text-gray-500 truncate">{org.slug}</p>
+                      </div>
+                    </Link>
+                    <button className="p-1.5 hover:bg-gray-100 rounded-lg transition opacity-0 group-hover:opacity-100">
                       <MoreVertical className="h-4 w-4 text-gray-400" />
                     </button>
                   </div>
-                </div>
 
-                {org.description && (
-                  <p className="mt-3 text-sm text-gray-600 line-clamp-2">
-                    {org.description}
-                  </p>
-                )}
+                  {org.description && (
+                    <p className="mt-3 text-sm text-gray-600 line-clamp-2">
+                      {org.description}
+                    </p>
+                  )}
 
-                <div className="mt-4 space-y-2">
-                  <div className="flex items-center gap-2">
-                    <span className={`px-2 py-0.5 text-xs font-medium rounded-full ${
-                      org.plan === 'ENTERPRISE' ? 'bg-purple-100 text-purple-800' :
-                      org.plan === 'PROFESSIONAL' ? 'bg-blue-100 text-blue-800' :
-                      org.plan === 'STARTER' ? 'bg-green-100 text-green-800' :
-                      'bg-gray-100 text-gray-800'
-                    }`}>
+                  {/* Badges */}
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    <ThemeBadge 
+                      variant={
+                        org.plan === 'ENTERPRISE' ? 'primary' :
+                        org.plan === 'PROFESSIONAL' ? 'secondary' :
+                        org.plan === 'STARTER' ? 'accent' : 'default'
+                      }
+                      size="sm"
+                    >
                       {org.plan}
-                    </span>
-                    <span className={`px-2 py-0.5 text-xs font-medium rounded-full ${
-                      org.status === 'ACTIVE' ? 'bg-green-100 text-green-800' :
-                      org.status === 'SUSPENDED' ? 'bg-red-100 text-red-800' :
-                      org.status === 'TRIAL' ? 'bg-yellow-100 text-yellow-800' :
-                      'bg-gray-100 text-gray-800'
-                    }`}>
+                    </ThemeBadge>
+                    <ThemeBadge 
+                      variant={
+                        org.status === 'ACTIVE' ? 'success' :
+                        org.status === 'SUSPENDED' ? 'danger' :
+                        org.status === 'TRIAL' ? 'warning' : 'default'
+                      }
+                      size="sm"
+                    >
                       {org.status}
-                    </span>
+                    </ThemeBadge>
+                    {org.website && (
+                      <ThemeBadge variant="default" size="sm" icon="Globe">
+                        Website
+                      </ThemeBadge>
+                    )}
                   </div>
 
-                  <div className="flex items-center gap-4 text-sm text-gray-500">
-                    <div className="flex items-center gap-1">
-                      <Users className="h-4 w-4" />
-                      <span>{org._count.memberships}</span>
+                  {/* Stats */}
+                  <div className="mt-4 flex items-center gap-4 text-sm text-gray-500">
+                    <div className="flex items-center gap-1.5">
+                      <Users className="h-4 w-4 text-gray-400" />
+                      <span className="font-medium">{org._count.memberships}</span>
+                      <span>members</span>
                     </div>
-                    <div className="flex items-center gap-1">
-                      <Home className="h-4 w-4" />
-                      <span>{org._count.houses}</span>
+                    <div className="flex items-center gap-1.5">
+                      <Home className="h-4 w-4 text-gray-400" />
+                      <span className="font-medium">{org._count.houses}</span>
+                      <span>houses</span>
                     </div>
-                    <div className="flex items-center gap-1">
-                      <Calendar className="h-4 w-4" />
-                      <span>{org._count.events}</span>
+                    <div className="flex items-center gap-1.5">
+                      <Calendar className="h-4 w-4 text-gray-400" />
+                      <span className="font-medium">{org._count.events}</span>
+                      <span>events</span>
                     </div>
                   </div>
                 </div>
 
+                {/* Owner Section */}
                 {owner && (
-                  <div className="mt-4 pt-4 border-t border-gray-100">
-                    <p className="text-xs text-gray-500 mb-1">Owner</p>
+                  <div className="px-5 py-3 bg-gray-50 border-t border-gray-100">
+                    <p className="text-xs text-gray-500 mb-2">Organization Owner</p>
                     <div className="flex items-center gap-2">
-                      <div className="w-6 h-6 bg-blue-100 rounded-full flex items-center justify-center">
-                        <span className="text-blue-700 text-xs font-medium">
-                          {owner.name?.[0] || owner.email[0]}
-                        </span>
+                      <div className="w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-medium"
+                           style={{ background: `var(--theme-primary)` }}>
+                        {owner.image ? (
+                          <img src={owner.image} alt="" className="w-7 h-7 rounded-full object-cover" />
+                        ) : (
+                          owner.name?.[0] || owner.email[0].toUpperCase()
+                        )}
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium text-gray-900 truncate">
@@ -203,13 +221,14 @@ export default async function OrganizationsPage() {
                   </div>
                 )}
 
-                <div className="mt-4 pt-3 border-t border-gray-100 flex items-center justify-between">
+                {/* Card Footer */}
+                <div className="px-5 py-3 border-t border-gray-100 flex items-center justify-between">
                   <p className="text-xs text-gray-500">
                     Created {new Date(org.createdAt).toLocaleDateString()}
                   </p>
                   <Link
                     href={`/platform/organizations/${org.id}`}
-                    className="text-xs font-medium text-blue-600 hover:text-blue-700"
+                    className="text-xs font-medium text-theme-primary hover:text-theme-secondary transition-colors"
                   >
                     View Details →
                   </Link>

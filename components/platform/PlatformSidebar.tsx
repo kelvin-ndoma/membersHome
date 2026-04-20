@@ -11,7 +11,7 @@ import {
   FileText,
   CreditCard,
   Settings,
-  ChevronRight
+  ChevronRight,
 } from 'lucide-react'
 
 const navigation = [
@@ -34,7 +34,10 @@ export default function PlatformSidebar({ mobile, onClose }: PlatformSidebarProp
 
   return (
     <aside className={`${mobile ? 'block' : 'hidden lg:block'} lg:fixed lg:inset-y-0 lg:left-0 lg:z-20 lg:w-64 lg:pt-16 lg:bg-white lg:border-r lg:border-gray-200`}>
-      <nav className="space-y-1 p-4">
+      <nav className="h-full overflow-y-auto p-4 space-y-1">
+        <p className="px-3 py-2 text-xs font-semibold text-gray-400 uppercase tracking-wider">
+          Platform
+        </p>
         {navigation.map((item) => {
           const isActive = pathname === item.href || pathname.startsWith(item.href + '/')
           
@@ -46,16 +49,16 @@ export default function PlatformSidebar({ mobile, onClose }: PlatformSidebarProp
               className={`
                 group flex items-center justify-between px-3 py-2.5 text-sm font-medium rounded-lg transition
                 ${isActive
-                  ? 'bg-blue-50 text-blue-700'
+                  ? 'bg-theme-primary/10 text-theme-primary'
                   : 'text-gray-700 hover:bg-gray-50'
                 }
               `}
             >
               <div className="flex items-center gap-3">
-                <item.icon className={`h-5 w-5 ${isActive ? 'text-blue-600' : 'text-gray-400 group-hover:text-gray-500'}`} />
-                {item.name}
+                <item.icon className={`h-5 w-5 ${isActive ? 'text-theme-primary' : 'text-gray-400'}`} />
+                <span>{item.name}</span>
               </div>
-              {isActive && <ChevronRight className="h-4 w-4 text-blue-600" />}
+              {isActive && <ChevronRight className="h-4 w-4 text-theme-primary" />}
             </Link>
           )
         })}

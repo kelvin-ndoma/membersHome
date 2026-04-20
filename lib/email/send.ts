@@ -12,6 +12,9 @@ import { ResetPasswordEmail } from './templates/reset-password'
 import { VerifyEmail } from './templates/verify-email'
 import { MembershipCancellationRequestedEmail } from './templates/membership-cancellation-requested'
 import { MembershipCancellationAdminNotificationEmail } from './templates/membership-cancellation-admin-notification'
+import { PaymentSuccessEmail } from './templates/payment-success'
+import { PurchaseConfirmationEmail } from './templates/purchase-confirmation'
+import { PurchaseFailedEmail } from './templates/purchase-failed'
 import { createElement } from 'react'
 
 interface SendEmailOptions {
@@ -31,10 +34,11 @@ export async function sendEmail({ to, template, data }: SendEmailOptions) {
     'application-approved': WelcomeEmail,
     'application-rejected': ApplicationRejectedEmail,
     'payment-receipt': WelcomeEmail,
+    'payment-success': PaymentSuccessEmail,
+    'payment-failed': PaymentFailedEmail,
     'event-reminder': WelcomeEmail,
     announcement: AnnouncementEmail,
     'card-collection': CardCollectionEmail,
-    'payment-failed': PaymentFailedEmail,
     'staff-invitation': StaffInvitationEmail,
     'member-invitation': MemberInvitationEmail,
     'membership-cancellation-requested': MembershipCancellationRequestedEmail,
@@ -42,7 +46,9 @@ export async function sendEmail({ to, template, data }: SendEmailOptions) {
     'membership-paused': MembershipCancellationRequestedEmail,
     'membership-resumed': MembershipCancellationRequestedEmail,
     'membership-cancellation-admin-notification': MembershipCancellationAdminNotificationEmail,
-    'form-submission': AnnouncementEmail, // Use AnnouncementEmail as fallback for form submissions
+    'form-submission': AnnouncementEmail,
+    'purchase-confirmation': PurchaseConfirmationEmail,
+    'purchase-failed': PurchaseFailedEmail,
   }
 
   const EmailComponent = templates[template]
@@ -61,10 +67,11 @@ export async function sendEmail({ to, template, data }: SendEmailOptions) {
     'application-approved': 'Welcome! Your Membership Has Been Approved',
     'application-rejected': 'Update on Your Membership Application',
     'payment-receipt': 'Payment Receipt - MembersHome',
+    'payment-success': 'Payment Successful - MembersHome',
+    'payment-failed': `Payment Failed - Action Required for ${data.organizationName || 'Your Membership'}`,
     'event-reminder': `Reminder: ${data.eventName || 'Upcoming Event'}`,
     announcement: data.subject || 'Announcement from MembersHome',
     'card-collection': `Add Your Payment Method - ${data.organizationName || 'Membership Application'}`,
-    'payment-failed': `Payment Failed - Action Required for ${data.organizationName || 'Your Membership'}`,
     'staff-invitation': `You've been invited to join ${data.organizationName || 'MembersHome'} as ${data.role || 'Staff'}`,
     'member-invitation': `You've been invited to join ${data.organizationName || 'MembersHome'}`,
     'membership-cancellation-requested': `Cancellation Request Received - ${data.organizationName || 'MembersHome'}`,
@@ -73,6 +80,8 @@ export async function sendEmail({ to, template, data }: SendEmailOptions) {
     'membership-resumed': `Membership Resumed - ${data.organizationName || 'MembersHome'}`,
     'membership-cancellation-admin-notification': `🚨 Cancellation Request: ${data.memberName || 'Member'} - ${data.organizationName || 'MembersHome'}`,
     'form-submission': `New Form Submission: ${data.formTitle || 'Form'}`,
+    'purchase-confirmation': `Purchase Confirmation - ${data.productName || 'Your Order'}`,
+    'purchase-failed': `Purchase Failed - ${data.productName || 'Your Order'}`,
   }
 
   try {

@@ -58,6 +58,10 @@ export async function POST(req: NextRequest) {
         await handleInvoicePaymentFailed(event.data.object)
         break
       
+      case 'transfer.created':
+        await handleTransferCreated(event.data.object)
+        break
+      
       default:
         console.log(`Unhandled event type: ${event.type}`)
     }
@@ -70,16 +74,127 @@ export async function POST(req: NextRequest) {
 }
 
 async function handlePaymentIntentSucceeded(paymentIntent: any) {
-  const { applicationId, organizationId, houseId } = paymentIntent.metadata || {}
+  const { applicationId, organizationId, houseId, productId, buyerId, purchaseId } = paymentIntent.metadata || {}
   
+  // Handle membership application payment
   if (applicationId) {
     console.log('Payment succeeded for application:', applicationId)
+    
+    await prisma.membershipApplication.update({
+      where: { id: applicationId },
+      data: {
+        status: 'APPROVED',
+        paymentProcessedAt: new Date(),
+        stripePaymentIntentId: paymentIntent.id
+      }
+    })
+  }
+  
+  // Handle marketplace purchase
+  if (productId && buyerId) {
+    console.log('Marketplace purchase succeeded for product:', productId)
+    
+    // Find the pending purchase
+    const purchase = await prisma.communityPurchase.findFirst({
+      where: {
+        productId: productId,
+        buyerId: buyerId,
+        status: 'PENDING'
+      },
+      include: {
+        product: {
+          include: {
+            seller: true
+          }
+        },
+        buyer: true
+      }
+    })
+    
+    if (purchase) {
+      // Update purchase status to COMPLETED
+      await prisma.communityPurchase.update({
+        where: { id: purchase.id },
+        data: { 
+          status: 'COMPLETED',
+          paymentId: paymentIntent.id
+        }
+      })
+      
+      // Update product inventory
+      if (purchase.product.inventory !== null) {
+        await prisma.communityProduct.update({
+          where: { id: purchase.productId },
+          data: {
+            inventory: { decrement: purchase.quantity },
+            salesCount: { increment: purchase.quantity },
+            revenue: { increment: purchase.totalAmount }
+          }
+        })
+      } else {
+        await prisma.communityProduct.update({
+          where: { id: purchase.productId },
+          data: {
+            salesCount: { increment: purchase.quantity },
+            revenue: { increment: purchase.totalAmount }
+          }
+        })
+      }
+      
+      // Create transfer to seller
+      if (purchase.sellerPayoutAmount && purchase.product.seller.stripeConnectAccountId) {
+        try {
+          const transfer = await stripe.transfers.create({
+            amount: Math.round(purchase.sellerPayoutAmount * 100),
+            currency: purchase.currency.toLowerCase(),
+            destination: purchase.product.seller.stripeConnectAccountId,
+            transfer_group: paymentIntent.id,
+            metadata: {
+              purchaseId: purchase.id,
+              productId: purchase.productId,
+              productName: purchase.product.name,
+              houseFeePercent: purchase.houseFeePercent?.toString() || '5'
+            }
+          })
+          
+          await prisma.communityPurchase.update({
+            where: { id: purchase.id },
+            data: { sellerPaidAt: new Date() }
+          })
+          
+          console.log(`Transfer sent to seller ${purchase.product.seller.id}: ${transfer.id}`)
+        } catch (transferError) {
+          console.error('Failed to create transfer to seller:', transferError)
+        }
+      }
+      
+      // Mark house as paid
+      await prisma.communityPurchase.update({
+        where: { id: purchase.id },
+        data: { housePaidAt: new Date() }
+      })
+      
+      // Send purchase confirmation email
+      await sendEmail({
+        to: purchase.buyer.email,
+        template: 'payment-success',
+        data: {
+          name: purchase.buyer.name,
+          productName: purchase.product.name,
+          quantity: purchase.quantity,
+          totalAmount: purchase.totalAmount,
+          isDigital: purchase.product.isDigital,
+          downloadToken: purchase.downloadToken
+        }
+      })
+    }
   }
 }
 
 async function handlePaymentIntentFailed(paymentIntent: any) {
-  const { applicationId } = paymentIntent.metadata || {}
+  const { applicationId, productId, buyerId } = paymentIntent.metadata || {}
   
+  // Handle failed membership application payment
   if (applicationId) {
     const application = await prisma.membershipApplication.findUnique({
       where: { id: applicationId },
@@ -107,6 +222,45 @@ async function handlePaymentIntentFailed(paymentIntent: any) {
       })
     }
   }
+  
+  // Handle failed marketplace purchase
+  if (productId && buyerId) {
+    const purchase = await prisma.communityPurchase.findFirst({
+      where: {
+        productId: productId,
+        buyerId: buyerId,
+        status: 'PENDING'
+      },
+      include: {
+        product: {
+          include: {
+            seller: true
+          }
+        },
+        buyer: true
+      }
+    })
+    
+    if (purchase) {
+      // Update purchase status to CANCELLED
+      await prisma.communityPurchase.update({
+        where: { id: purchase.id },
+        data: { status: 'CANCELLED' }
+      })
+      
+      // Send failure email to buyer
+      await sendEmail({
+        to: purchase.buyer.email,
+        template: 'payment-failed',
+        data: {
+          name: purchase.buyer.name,
+          productName: purchase.product.name,
+          amount: `${paymentIntent.currency} ${(paymentIntent.amount / 100).toFixed(2)}`,
+          failureReason: paymentIntent.last_payment_error?.message || 'Payment declined'
+        }
+      })
+    }
+  }
 }
 
 async function handleSetupIntentSucceeded(setupIntent: any) {
@@ -114,6 +268,14 @@ async function handleSetupIntentSucceeded(setupIntent: any) {
   
   if (applicationId) {
     console.log('Setup intent succeeded for application:', applicationId)
+    
+    await prisma.membershipApplication.update({
+      where: { id: applicationId },
+      data: {
+        stripePaymentMethodId: setupIntent.payment_method,
+        paymentAuthorizedAt: new Date()
+      }
+    })
   }
 }
 
@@ -264,5 +426,18 @@ async function handleInvoicePaymentFailed(invoice: any) {
         })
       }
     }
+  }
+}
+
+async function handleTransferCreated(transfer: any) {
+  console.log(`Transfer created: ${transfer.id} for amount ${transfer.amount / 100} ${transfer.currency}`)
+  
+  // Find the purchase by metadata
+  const purchaseId = transfer.metadata?.purchaseId
+  if (purchaseId) {
+    await prisma.communityPurchase.update({
+      where: { id: purchaseId },
+      data: { sellerPaidAt: new Date() }
+    })
   }
 }

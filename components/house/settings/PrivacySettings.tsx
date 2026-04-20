@@ -7,13 +7,15 @@ import toast from 'react-hot-toast'
 import { Lock, Globe, Eye, EyeOff } from 'lucide-react'
 
 interface PrivacySettingsProps {
+  orgSlug: string
+  houseSlug: string
   house: {
     id: string
     isPrivate: boolean
   }
 }
 
-export default function PrivacySettings({ house }: PrivacySettingsProps) {
+export default function PrivacySettings({ orgSlug, houseSlug, house }: PrivacySettingsProps) {
   const router = useRouter()
   const [isPrivate, setIsPrivate] = useState(house.isPrivate)
   const [isLoading, setIsLoading] = useState(false)
@@ -22,10 +24,12 @@ export default function PrivacySettings({ house }: PrivacySettingsProps) {
     setIsLoading(true)
     
     try {
-      const response = await fetch(`/api/houses/${house.id}`, {
+      const response = await fetch(`/api/org/${orgSlug}/houses/${houseSlug}/settings`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ isPrivate: !isPrivate }),
+        body: JSON.stringify({
+          general: { isPrivate: !isPrivate }
+        }),
       })
 
       const result = await response.json()

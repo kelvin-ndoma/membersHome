@@ -112,6 +112,7 @@ export async function POST(
       isPublic,
       requiresApproval,
       prices,
+      settings,
     } = await req.json()
 
     if (!name || !type || !prices || prices.length === 0) {
@@ -132,12 +133,13 @@ export async function POST(
         status: 'ACTIVE',
         organizationId: house.organizationId,
         houseId: house.id,
+        settings: settings || {},
         prices: {
           create: prices.map((p: any) => ({
             billingFrequency: p.billingFrequency,
             amount: p.amount,
             currency: p.currency || 'USD',
-            setupFee: p.setupFee || 0,
+            // setupFee removed
           }))
         }
       },
@@ -149,7 +151,7 @@ export async function POST(
     await prisma.auditLog.create({
       data: {
         userId: session.user.id,
-        userEmail: session.user.email,
+        userEmail: session.user.email || '',
         action: 'MEMBERSHIP_PLAN_CREATED',
         entityType: 'MEMBERSHIP_PLAN',
         entityId: plan.id,

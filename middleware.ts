@@ -38,11 +38,12 @@ export async function middleware(req: NextRequest) {
     '/apply'
   ]
   
-  // Check if it's a public house page: /orgSlug/houseSlug (no /org/ prefix)
-  const isPublicHousePage = path.match(/^\/[^\/]+\/[^\/]+$/) && 
+  // Check if it's a public house page: /[orgSlug]/[houseSlug]
+  const isPublicHousePage = path.match(/^\/[^\/]+\/[^\/]+(\/.*)?$/) && 
                             !path.startsWith('/org') && 
                             !path.startsWith('/portal') &&
-                            !path.startsWith('/platform')
+                            !path.startsWith('/platform') &&
+                            !path.startsWith('/api')
   
   const isPublicPath = publicPaths.some(p => path.startsWith(p)) || 
                        isPublicHousePage ||

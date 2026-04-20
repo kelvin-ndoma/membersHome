@@ -1,4 +1,4 @@
-// components/org/HouseSidebar.tsx
+// components/org/HouseSidebar.tsx - Add key and pathname dependency
 'use client'
 
 import Link from 'next/link'
@@ -29,7 +29,6 @@ interface HouseSidebarProps {
 
 export default function HouseSidebar({ orgSlug, houseSlug, isAdmin, mobile, onClose }: HouseSidebarProps) {
   const pathname = usePathname()
-
   const basePath = `/org/${orgSlug}/houses/${houseSlug}`
 
   const navigation = [
@@ -52,7 +51,7 @@ export default function HouseSidebar({ orgSlug, houseSlug, isAdmin, mobile, onCl
   const filteredNav = navigation.filter(item => !item.adminOnly || isAdmin)
   const filteredAdminNav = adminNavigation.filter(item => !item.adminOnly || isAdmin)
 
-  const handleNavigation = (e: React.MouseEvent<HTMLAnchorElement>, href: string) => {
+  const handleClick = (e: React.MouseEvent<HTMLAnchorElement>, href: string) => {
     e.preventDefault()
     if (onClose) onClose()
     window.location.href = href
@@ -68,10 +67,7 @@ export default function HouseSidebar({ orgSlug, houseSlug, isAdmin, mobile, onCl
         {/* Back to Org */}
         <a
           href={`/org/${orgSlug}/dashboard`}
-          onClick={(e) => {
-            e.preventDefault()
-            window.location.href = `/org/${orgSlug}/dashboard`
-          }}
+          onClick={(e) => handleClick(e, `/org/${orgSlug}/dashboard`)}
           className="flex items-center gap-2 px-3 py-2 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-50 rounded-lg transition"
         >
           <Home className="h-4 w-4" />
@@ -88,9 +84,9 @@ export default function HouseSidebar({ orgSlug, houseSlug, isAdmin, mobile, onCl
               
               return (
                 <Link
-                  key={item.name}
+                  key={`${item.href}-${houseSlug}`} // Add houseSlug to key to force re-render
                   href={item.href}
-                  onClick={(e) => handleNavigation(e, item.href)}
+                  onClick={(e) => handleClick(e, item.href)}
                   className={`
                     group flex items-center justify-between px-3 py-2.5 text-sm font-medium rounded-lg transition
                     ${isActive
@@ -121,9 +117,9 @@ export default function HouseSidebar({ orgSlug, houseSlug, isAdmin, mobile, onCl
                 
                 return (
                   <Link
-                    key={item.name}
+                    key={`${item.href}-${houseSlug}`} // Add houseSlug to key to force re-render
                     href={item.href}
-                    onClick={(e) => handleNavigation(e, item.href)}
+                    onClick={(e) => handleClick(e, item.href)}
                     className={`
                       group flex items-center justify-between px-3 py-2.5 text-sm font-medium rounded-lg transition
                       ${isActive

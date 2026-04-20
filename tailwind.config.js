@@ -1,3 +1,4 @@
+// tailwind.config.js
 /** @type {import('tailwindcss').Config} */
 module.exports = {
   content: [
@@ -41,11 +42,20 @@ module.exports = {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
         },
+        // Theme colors from platform/org settings
+        theme: {
+          primary: 'var(--theme-primary)',
+          secondary: 'var(--theme-secondary)',
+          accent: 'var(--theme-accent)',
+          background: 'var(--theme-background)',
+          text: 'var(--theme-text)',
+        },
       },
       borderRadius: {
         lg: "var(--radius)",
         md: "calc(var(--radius) - 2px)",
         sm: "calc(var(--radius) - 4px)",
+        theme: "var(--theme-radius)",
       },
     },
   },

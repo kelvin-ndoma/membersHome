@@ -2,7 +2,7 @@
 'use client'
 
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import { 
   LayoutDashboard,
   Home,
@@ -10,7 +10,6 @@ import {
   Shield,
   Settings,
   ChevronRight,
-  Eye,
 } from 'lucide-react'
 
 interface OrgSidebarProps {
@@ -22,6 +21,7 @@ interface OrgSidebarProps {
 
 export default function OrgSidebar({ orgSlug, isAdmin, mobile, onClose }: OrgSidebarProps) {
   const pathname = usePathname()
+  const router = useRouter()
 
   const navigation = [
     { name: 'Dashboard', href: `/org/${orgSlug}/dashboard`, icon: LayoutDashboard, adminOnly: false },
@@ -37,10 +37,9 @@ export default function OrgSidebar({ orgSlug, isAdmin, mobile, onClose }: OrgSid
   const filteredNav = navigation.filter(item => !item.adminOnly || isAdmin)
   const filteredAdminNav = adminNavigation.filter(item => !item.adminOnly || isAdmin)
 
-  const handleNavigation = (e: React.MouseEvent<HTMLAnchorElement>, href: string) => {
-    e.preventDefault()
+  const handleNavigation = (href: string) => {
     if (onClose) onClose()
-    window.location.href = href
+    router.push(href)
   }
 
   return (
@@ -55,12 +54,11 @@ export default function OrgSidebar({ orgSlug, isAdmin, mobile, onClose }: OrgSid
             const isActive = pathname === item.href || pathname.startsWith(item.href + '/')
             
             return (
-              <Link
+              <button
                 key={item.name}
-                href={item.href}
-                onClick={(e) => handleNavigation(e, item.href)}
+                onClick={() => handleNavigation(item.href)}
                 className={`
-                  group flex items-center justify-between px-3 py-2.5 text-sm font-medium rounded-lg transition
+                  w-full group flex items-center justify-between px-3 py-2.5 text-sm font-medium rounded-lg transition
                   ${isActive
                     ? 'bg-blue-50 text-blue-700'
                     : 'text-gray-700 hover:bg-gray-50'
@@ -72,7 +70,7 @@ export default function OrgSidebar({ orgSlug, isAdmin, mobile, onClose }: OrgSid
                   {item.name}
                 </div>
                 {isActive && <ChevronRight className="h-4 w-4 text-blue-600" />}
-              </Link>
+              </button>
             )
           })}
         </div>
@@ -88,12 +86,11 @@ export default function OrgSidebar({ orgSlug, isAdmin, mobile, onClose }: OrgSid
                 const isActive = pathname === item.href || pathname.startsWith(item.href + '/')
                 
                 return (
-                  <Link
+                  <button
                     key={item.name}
-                    href={item.href}
-                    onClick={(e) => handleNavigation(e, item.href)}
+                    onClick={() => handleNavigation(item.href)}
                     className={`
-                      group flex items-center justify-between px-3 py-2.5 text-sm font-medium rounded-lg transition
+                      w-full group flex items-center justify-between px-3 py-2.5 text-sm font-medium rounded-lg transition
                       ${isActive
                         ? 'bg-blue-50 text-blue-700'
                         : 'text-gray-700 hover:bg-gray-50'
@@ -105,7 +102,7 @@ export default function OrgSidebar({ orgSlug, isAdmin, mobile, onClose }: OrgSid
                       {item.name}
                     </div>
                     {isActive && <ChevronRight className="h-4 w-4 text-blue-600" />}
-                  </Link>
+                  </button>
                 )
               })}
             </div>

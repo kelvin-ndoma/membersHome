@@ -1,10 +1,8 @@
 // app/layout.tsx
 import './globals.css'
-import { Inter } from 'next/font/google'
 import { Toaster } from 'react-hot-toast'
 import { Providers } from './providers'
-
-const inter = Inter({ subsets: ['latin'] })
+import ThemeFetcher from '@/components/theme/ThemeFetcher'  // Changed to default import
 
 export const metadata = {
   title: 'MembersHome - Membership Management Platform',
@@ -18,11 +16,13 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className={inter.className}>
-        <Providers>
-          {children}
-          <Toaster position="top-right" />
-        </Providers>
+      <body>
+        <ThemeFetcher>
+          <Providers>
+            {children}
+            <Toaster position="top-right" />
+          </Providers>
+        </ThemeFetcher>
       </body>
     </html>
   )

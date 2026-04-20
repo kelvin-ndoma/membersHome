@@ -1,3 +1,4 @@
+// prisma/schema.prisma
 generator client {
   provider = "prisma-client-js"
 }
@@ -11,29 +12,40 @@ datasource db {
 // PLATFORM LEVEL
 // ========================
 model Platform {
-  id          String   @id @default(auto()) @map("_id") @db.ObjectId
-  name        String   @default("membersHome")
+  id          String  @id @default(auto()) @map("_id") @db.ObjectId
+  name        String  @default("membersHome")
   description String?
-  settings    Json     @default("{}")
-  
-  allowCustomDomains   Boolean   @default(true)
-  maxOrganizations     Int?
+  settings    Json    @default("{}")
+
+  allowCustomDomains    Boolean  @default(true)
+  maxOrganizations      Int?
   defaultPlanForNewOrgs PlanType @default(FREE)
-  
-  logoUrl     String?
-  faviconUrl  String?
-  primaryColor String?  @default("#3B82F6")
-  secondaryColor String? @default("#1E40AF")
-  
+
+  // Branding & Theming
+  logoUrl         String?
+  faviconUrl      String?
+  loginPageImage  String?
+  primaryColor    String? @default("#3B82F6")
+  secondaryColor  String? @default("#1E40AF")
+  accentColor     String? @default("#10B981")
+  backgroundColor String? @default("#F9FAFB")
+  textColor       String? @default("#111827")
+  borderRadius    String? @default("0.5rem")
+  buttonStyle     String? @default("rounded")
+  fontFamily      String? @default("Inter")
+  customCSS       String?
+
+  allowOrgCustomization Boolean @default(true)
+
   stripePlatformAccountId String? @unique
   platformFeePercent      Float?  @default(0)
-  
+
   enableMultiTenancy    Boolean @default(true)
   enableMemberMessaging Boolean @default(true)
   enableMemberDirectory Boolean @default(true)
-  
+
   organizations Organization[]
-  
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -88,7 +100,31 @@ model User {
   cancellationRequests    CancellationRequest[]
   reviewedCancellations   CancellationRequest[]   @relation("CancellationReviewer")
   createdApplications     MembershipApplication[] @relation("ApplicationCreatedUser")
+  
+  // Stripe Connect for receiving payouts
+  stripeConnectAccountId String?
+  stripeAccountStatus    String? @default("pending")
+  stripeAccountSetupUrl  String?
+  
+  // NEW: Community relations
+  createdCommunities    Community[]            @relation("CommunityCreator")
+  communityMemberships  CommunityMember[]      @relation("CommunityMemberUser")
+  communityPosts        CommunityPost[]        @relation("PostAuthor")
+  communityComments     CommunityComment[]     @relation("CommentAuthor")
+  communityProducts     CommunityProduct[]     @relation("ProductSeller")
+  communityPurchases    CommunityPurchase[]    @relation("PurchaseBuyer")
+  hostedLiveStreams     LiveStream[]           @relation("StreamHost")
+  communityEvents       CommunityEvent[]       @relation("EventOrganizer")
+  communityRSVPs        CommunityEventRSVP[]   @relation("UserRSVPs")
+  communityPostLikes    CommunityPostLike[]    @relation("UserPostLikes")
+  communityCommentLikes CommunityCommentLike[] @relation("UserCommentLikes")
+  communityPostShares   CommunityPostShare[]   @relation("UserPostShares")
+  liveStreamViewer      LiveStreamViewer[]     @relation("UserStreamViewer")
+  communityModerator    CommunityModerator[]   @relation("UserModerator")
+
+  @@index([stripeConnectAccountId])
 }
+
 
 enum PlatformRole {
   USER
@@ -113,15 +149,15 @@ model Session {
 // CUSTOMER & PAYMENTS
 // ========================
 model Customer {
-  id                    String   @id @default(auto()) @map("_id") @db.ObjectId
-  stripeCustomerId      String   @unique
-  userId                String   @unique @db.ObjectId
+  id                     String  @id @default(auto()) @map("_id") @db.ObjectId
+  stripeCustomerId       String  @unique
+  userId                 String  @unique @db.ObjectId
   defaultPaymentMethodId String?
-  
-  user         User     @relation(fields: [userId], references: [id])
+
+  user            User             @relation(fields: [userId], references: [id])
   membershipItems MembershipItem[]
-  payments     Payment[]
-  
+  payments        Payment[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -134,11 +170,10 @@ model Organization {
   name        String
   slug        String  @unique
   description String?
-  logoUrl     String?
   website     String?
-  
-  platformId  String? @db.ObjectId
-  platform    Platform? @relation(fields: [platformId], references: [id])
+
+  platformId String?   @db.ObjectId
+  platform   Platform? @relation(fields: [platformId], references: [id])
 
   plan         PlanType           @default(FREE)
   billingEmail String?
@@ -147,9 +182,21 @@ model Organization {
   stripeCustomerId     String?
   stripeSubscriptionId String?
 
-  primaryColor   String? @default("#3B82F6")
-  secondaryColor String? @default("#1E40AF")
-  customDomain   String?
+  logoUrl         String?
+  faviconUrl      String?
+  loginPageImage  String?
+  primaryColor    String?
+  secondaryColor  String?
+  accentColor     String?
+  backgroundColor String?
+  textColor       String?
+  borderRadius    String?
+  buttonStyle     String?
+  fontFamily      String?
+  customCSS       String?
+  customDomain    String?
+
+  useCustomBranding Boolean @default(false)
 
   settings Json @default("{}")
 
@@ -169,6 +216,10 @@ model Organization {
   rsvps           RSVP[]
   ticketPurchases TicketPurchase[]
 
+  // Stripe Connect
+  stripeConnectAccountId String?
+  stripeAccountStatus    String? @default("pending")
+
   membershipPlans        MembershipPlan[]
   membershipApplications MembershipApplication[]
   membershipItems        MembershipItem[]
@@ -181,6 +232,7 @@ model Organization {
   @@index([stripeCustomerId])
   @@index([stripeSubscriptionId])
   @@index([platformId])
+  @@index([stripeConnectAccountId])
 }
 
 enum PlanType {
@@ -201,14 +253,14 @@ enum OrganizationStatus {
 // MEMBERSHIP & ROLES
 // ========================
 model Membership {
-  id          String @id @default(auto()) @map("_id") @db.ObjectId
-  userId      String @db.ObjectId
+  id             String @id @default(auto()) @map("_id") @db.ObjectId
+  userId         String @db.ObjectId
   organizationId String @db.ObjectId
 
   role   OrganizationRole @default(MEMBER)
   status MembershipStatus @default(ACTIVE)
 
-  joinedAt     DateTime @default(now())
+  joinedAt     DateTime  @default(now())
   lastActiveAt DateTime?
 
   user         User         @relation(fields: [userId], references: [id])
@@ -236,7 +288,7 @@ enum MembershipStatus {
   PAUSED
   EXPIRED
   BANNED
-  CANCELLED  // ← ADD THIS
+  CANCELLED
 }
 
 // ========================
@@ -245,7 +297,7 @@ enum MembershipStatus {
 model House {
   id String @id @default(auto()) @map("_id") @db.ObjectId
 
-  organizationId String @db.ObjectId
+  organizationId String  @db.ObjectId
   name           String
   slug           String
   description    String?
@@ -253,6 +305,8 @@ model House {
 
   isPrivate Boolean @default(false)
   settings  Json    @default("{}")
+
+  theme Json?
 
   organization Organization @relation(fields: [organizationId], references: [id])
 
@@ -267,32 +321,52 @@ model House {
   memberMessages         MemberMessage[]
   customForms            CustomForm[]
 
-  events         Event[]
-  tickets        Ticket[]
-  communications Communication[]
-  reports        Report[]
-  auditLogs      AuditLog[]
-  rsvps          RSVP[]
+  events          Event[]
+  tickets         Ticket[]
+  communications  Communication[]
+  reports         Report[]
+  auditLogs       AuditLog[]
+  rsvps           RSVP[]
   ticketPurchases TicketPurchase[]
+
+  // Stripe Connect for marketplace payouts
+  stripeConnectAccountId String?
+  stripeAccountStatus    String? @default("pending")
+  
+  // Payout settings
+  payoutSchedule         String? @default("manual")
+  minimumPayoutAmount    Float?  @default(25)
+
+  // NEW: Communities within this house
+  communities Community[]
+
+  // Marketplace settings
+  marketplaceFeePercent Float? @default(5)
+  autoApproveProducts   Boolean @default(false)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@unique([organizationId, slug])
   @@index([organizationId])
+  @@index([stripeConnectAccountId])
 }
 
+
+// ========================
+// HOUSE MEMBERSHIP
+// ========================
 model HouseMembership {
   id String @id @default(auto()) @map("_id") @db.ObjectId
 
-  houseId       String @db.ObjectId
-  membershipId  String @db.ObjectId
+  houseId      String @db.ObjectId
+  membershipId String @db.ObjectId
 
-  role          HouseRole         @default(HOUSE_MEMBER)
-  status        MembershipStatus  @default(ACTIVE)
+  role   HouseRole        @default(HOUSE_MEMBER)
+  status MembershipStatus @default(ACTIVE)
 
   membershipNumber String?
-  joinedAt         DateTime @default(now())
+  joinedAt         DateTime  @default(now())
   lastActiveAt     DateTime?
 
   permissions Json? @default("[]")
@@ -303,24 +377,32 @@ model HouseMembership {
   portalActivatedAt     DateTime?
 
   staffPosition String?
-  managerLevel  Int? @default(1)
+  managerLevel  Int?    @default(1)
 
-  house       House      @relation(fields: [houseId], references: [id])
-  membership  Membership @relation(fields: [membershipId], references: [id])
+  metadata Json?
 
-  memberProfile    MemberProfile?
-  memberDashboard  MemberDashboard?
-  membershipItems  MembershipItem[]
-  applications     MembershipApplication[]
-  invoices         Invoice[]
-  rsvps            RSVP[]
-  ticketPurchases  TicketPurchase[]
-  ticketValidations TicketValidation[]      @relation("ValidatorHouseMembership")
-  payments         Payment[]
-  sentMessages     MemberMessage[]         @relation("SentHouseMemberMessages")
-  receivedMessages MemberMessage[]         @relation("ReceivedHouseMemberMessages")
-  activities       MemberActivity[]
+  house      House      @relation(fields: [houseId], references: [id])
+  membership Membership @relation(fields: [membershipId], references: [id])
+
+  memberProfile        MemberProfile?
+  memberDashboard      MemberDashboard?
+  membershipItems      MembershipItem[]
+  applications         MembershipApplication[]
+  invoices             Invoice[]
+  rsvps                RSVP[]
+  ticketPurchases      TicketPurchase[]
+  ticketValidations    TicketValidation[]      @relation("ValidatorHouseMembership")
+  payments             Payment[]
+  sentMessages         MemberMessage[]         @relation("SentHouseMemberMessages")
+  receivedMessages     MemberMessage[]         @relation("ReceivedHouseMemberMessages")
+  activities           MemberActivity[]
   cancellationRequests CancellationRequest[]
+
+  groupMembershipItemId String?         @db.ObjectId
+  groupMembershipItem   MembershipItem? @relation("GroupSeat", fields: [groupMembershipItemId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  // NEW: Communities this house member belongs to
+  communityMemberships CommunityMember[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -329,6 +411,7 @@ model HouseMembership {
   @@index([houseId, role, status])
   @@index([membershipId])
   @@index([membershipNumber])
+  @@index([groupMembershipItemId])
 }
 
 enum HouseRole {
@@ -342,28 +425,31 @@ enum HouseRole {
 // MEMBER PORTAL
 // ========================
 model MemberPortal {
-  id             String   @id @default(auto()) @map("_id") @db.ObjectId
-  houseId        String   @unique @db.ObjectId
-  organizationId String   @db.ObjectId
-  
-  theme       Json     @default("{}")
-  navigation  Json     @default("{}")
-  features    Json     @default("{}")
-  
-  requireMFAForPortal Boolean @default(false)
-  sessionTimeout     Int     @default(480)
-  allowedDomains     String[] @default([])
-  
+  id             String @id @default(auto()) @map("_id") @db.ObjectId
+  houseId        String @unique @db.ObjectId
+  organizationId String @db.ObjectId
+
+  theme           Json    @default("{}")
+  layout          String? @default("default")
+  sidebarPosition String? @default("left")
+  showLogo        Boolean @default(true)
+  navigation      Json    @default("{}")
+  features        Json    @default("{}")
+
+  requireMFAForPortal Boolean  @default(false)
+  sessionTimeout      Int      @default(480)
+  allowedDomains      String[] @default([])
+
   welcomeMessage String?
   customCSS      String?
   customJS       String?
-  
-  metaTitle     String?
+
+  metaTitle       String?
   metaDescription String?
-  
+
   house        House        @relation(fields: [houseId], references: [id])
   organization Organization @relation(fields: [organizationId], references: [id])
-  
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -372,10 +458,10 @@ model MemberPortal {
 // MEMBER PROFILE
 // ========================
 model MemberProfile {
-  id               String @id @default(auto()) @map("_id") @db.ObjectId
+  id                String @id @default(auto()) @map("_id") @db.ObjectId
   houseMembershipId String @unique @db.ObjectId
-  userId           String @unique @db.ObjectId
-  houseId          String @db.ObjectId
+  userId            String @unique @db.ObjectId
+  houseId           String @db.ObjectId
 
   avatar           String?
   bio              String?
@@ -383,17 +469,17 @@ model MemberProfile {
   address          Json?
   emergencyContact Json?
 
-  notificationPreferences Json @default("{}")
-  privacySettings         Json @default("{}")
+  notificationPreferences Json   @default("{}")
+  privacySettings         Json   @default("{}")
   language                String @default("en")
   timezone                String @default("UTC")
 
-  jobTitle   String?
-  company    String?
-  industry   String?
-  skills     String[] @default([])
-  interests  String[] @default([])
-  socialLinks Json @default("{}")
+  jobTitle    String?
+  company     String?
+  industry    String?
+  skills      String[] @default([])
+  interests   String[] @default([])
+  socialLinks Json     @default("{}")
 
   houseMembership HouseMembership @relation(fields: [houseMembershipId], references: [id])
   user            User            @relation(fields: [userId], references: [id])
@@ -407,24 +493,24 @@ model MemberProfile {
 // MEMBER DASHBOARD
 // ========================
 model MemberDashboard {
-  id               String @id @default(auto()) @map("_id") @db.ObjectId
+  id                String @id @default(auto()) @map("_id") @db.ObjectId
   houseMembershipId String @unique @db.ObjectId
-  userId           String @unique @db.ObjectId
-  houseId          String @db.ObjectId
+  userId            String @unique @db.ObjectId
+  houseId           String @db.ObjectId
 
-  widgetLayout Json @default("{}")
+  widgetLayout Json     @default("{}")
   pinnedItems  String[] @default([])
 
   lastPortalLoginAt DateTime?
   lastPortalLoginIp String?
-  portalLoginCount  Int @default(0)
+  portalLoginCount  Int       @default(0)
 
   savedEvents        String[] @default([])
   savedAnnouncements String[] @default([])
 
-  defaultView     String @default("grid")
+  defaultView     String  @default("grid")
   emailDigest     Boolean @default(true)
-  digestFrequency String @default("weekly")
+  digestFrequency String  @default("weekly")
 
   houseMembership HouseMembership @relation(fields: [houseMembershipId], references: [id])
   user            User            @relation(fields: [userId], references: [id])
@@ -437,15 +523,15 @@ model MemberDashboard {
 }
 
 model MemberActivity {
-  id               String @id @default(auto()) @map("_id") @db.ObjectId
+  id                String @id @default(auto()) @map("_id") @db.ObjectId
   houseMembershipId String @db.ObjectId
-  dashboardId      String @db.ObjectId
-  userId           String @db.ObjectId
+  dashboardId       String @db.ObjectId
+  userId            String @db.ObjectId
 
   activityType ActivityType
   entityId     String
   entityType   String
-  metadata     Json @default("{}")
+  metadata     Json         @default("{}")
 
   performedAt DateTime @default(now())
   ipAddress   String?
@@ -480,29 +566,29 @@ enum ActivityType {
 // MEMBER MESSAGING
 // ========================
 model MemberMessage {
-  id               String @id @default(auto()) @map("_id") @db.ObjectId
+  id                    String @id @default(auto()) @map("_id") @db.ObjectId
   fromHouseMembershipId String @db.ObjectId
   toHouseMembershipId   String @db.ObjectId
-  fromUserId       String @db.ObjectId
-  toUserId         String @db.ObjectId
-  houseId          String @db.ObjectId
-  organizationId   String @db.ObjectId
+  fromUserId            String @db.ObjectId
+  toUserId              String @db.ObjectId
+  houseId               String @db.ObjectId
+  organizationId        String @db.ObjectId
 
-  subject      String
-  message      String
-  isRead       Boolean  @default(false)
-  readAt       DateTime?
-  parentMessageId String? @db.ObjectId
+  subject         String
+  message         String
+  isRead          Boolean   @default(false)
+  readAt          DateTime?
+  parentMessageId String?   @db.ObjectId
 
   status MessageStatus @default(SENT)
 
   fromHouseMembership HouseMembership @relation("SentHouseMemberMessages", fields: [fromHouseMembershipId], references: [id])
   toHouseMembership   HouseMembership @relation("ReceivedHouseMemberMessages", fields: [toHouseMembershipId], references: [id])
-  fromUser            User           @relation("SentMemberMessages", fields: [fromUserId], references: [id])
-  toUser              User           @relation("ReceivedMemberMessages", fields: [toUserId], references: [id])
-  house               House          @relation(fields: [houseId], references: [id])
-  organization        Organization   @relation(fields: [organizationId], references: [id])
-  parentMessage       MemberMessage? @relation("MessageThread", fields: [parentMessageId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  fromUser            User            @relation("SentMemberMessages", fields: [fromUserId], references: [id])
+  toUser              User            @relation("ReceivedMemberMessages", fields: [toUserId], references: [id])
+  house               House           @relation(fields: [houseId], references: [id])
+  organization        Organization    @relation(fields: [organizationId], references: [id])
+  parentMessage       MemberMessage?  @relation("MessageThread", fields: [parentMessageId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   replies             MemberMessage[] @relation("MessageThread")
 
   createdAt DateTime @default(now())
@@ -525,10 +611,10 @@ enum MessageStatus {
 // CANCELLATION REQUESTS
 // ========================
 model CancellationRequest {
-  id                 String   @id @default(auto()) @map("_id") @db.ObjectId
-  houseMembershipId  String   @db.ObjectId
-  membershipItemId   String   @db.ObjectId
-  userId             String   @db.ObjectId
+  id                String @id @default(auto()) @map("_id") @db.ObjectId
+  houseMembershipId String @db.ObjectId
+  membershipItemId  String @db.ObjectId
+  userId            String @db.ObjectId
 
   reason        CancellationReason
   reasonDetail  String?
@@ -604,32 +690,6 @@ model Event {
   status      EventStatus @default(DRAFT)
   publishedAt DateTime?
 
-  // Flexible event settings stored as JSON
-  // Example structure:
-  // {
-  //   "rsvp": {
-  //     "enabled": true,
-  //     "deadline": "2026-04-20T00:00:00Z",
-  //     "maxGuestsPerRsvp": 10,
-  //     "requireApproval": false,
-  //     "waitlistEnabled": true,
-  //     "waitlistCapacity": 50
-  //   },
-  //   "tickets": {
-  //     "maxPerPurchase": 8,
-  //     "allowTransfers": true,
-  //     "refundPolicy": "No refunds after 7 days before event"
-  //   },
-  //   "notifications": {
-  //     "sendReminders": true,
-  //     "reminderDays": [1, 3, 7],
-  //     "customMessage": "Looking forward to seeing you!"
-  //   },
-  //   "visibility": {
-  //     "showAttendeeCount": true,
-  //     "showRemainingTickets": true
-  //   }
-  // }
   settings Json?
 
   organization Organization @relation(fields: [organizationId], references: [id])
@@ -663,9 +723,9 @@ enum EventStatus {
 model RSVP {
   id String @id @default(auto()) @map("_id") @db.ObjectId
 
-  eventId           String @db.ObjectId
-  houseMembershipId String @db.ObjectId
-  organizationId    String @db.ObjectId
+  eventId           String  @db.ObjectId
+  houseMembershipId String  @db.ObjectId
+  organizationId    String  @db.ObjectId
   houseId           String? @db.ObjectId
 
   status      RSVPStatus @default(PENDING)
@@ -673,7 +733,7 @@ model RSVP {
   notes       String?
 
   checkedInAt DateTime?
-  checkedInBy String? @db.ObjectId
+  checkedInBy String?   @db.ObjectId
 
   amountPaid Float?  @default(0)
   currency   String? @default("USD")
@@ -779,11 +839,11 @@ enum TicketStatus {
 model TicketPurchase {
   id String @id @default(auto()) @map("_id") @db.ObjectId
 
-  ticketId        String  @db.ObjectId
-  organizationId  String  @db.ObjectId
-  houseId         String? @db.ObjectId
+  ticketId          String  @db.ObjectId
+  organizationId    String  @db.ObjectId
+  houseId           String? @db.ObjectId
   houseMembershipId String? @db.ObjectId
-  userId          String? @db.ObjectId
+  userId            String? @db.ObjectId
 
   quantity    Int
   unitPrice   Float
@@ -802,16 +862,16 @@ model TicketPurchase {
   usedCount   Int     @default(0)
   fullyUsed   Boolean @default(false)
 
-  metadata Json   @default("{}")
+  metadata Json    @default("{}")
   notes    String?
 
-  ticket       Ticket           @relation(fields: [ticketId], references: [id])
-  organization Organization     @relation(fields: [organizationId], references: [id])
-  house        House?           @relation(fields: [houseId], references: [id])
-  houseMembership HouseMembership? @relation(fields: [houseMembershipId], references: [id])
-  user         User?            @relation(fields: [userId], references: [id])
-  validations  TicketValidation[]
-  payments     Payment[]
+  ticket          Ticket             @relation(fields: [ticketId], references: [id])
+  organization    Organization       @relation(fields: [organizationId], references: [id])
+  house           House?             @relation(fields: [houseId], references: [id])
+  houseMembership HouseMembership?   @relation(fields: [houseMembershipId], references: [id])
+  user            User?              @relation(fields: [userId], references: [id])
+  validations     TicketValidation[]
+  payments        Payment[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -825,8 +885,8 @@ model TicketPurchase {
 model TicketValidation {
   id String @id @default(auto()) @map("_id") @db.ObjectId
 
-  ticketId                String  @db.ObjectId
-  purchaseId              String  @db.ObjectId
+  ticketId                   String  @db.ObjectId
+  purchaseId                 String  @db.ObjectId
   validatorHouseMembershipId String? @db.ObjectId
 
   ticketCode    String
@@ -840,8 +900,8 @@ model TicketValidation {
   invalidReason String?
   isReentry     Boolean  @default(false)
 
-  ticket   Ticket          @relation(fields: [ticketId], references: [id])
-  purchase TicketPurchase  @relation(fields: [purchaseId], references: [id])
+  ticket    Ticket           @relation(fields: [ticketId], references: [id])
+  purchase  TicketPurchase   @relation(fields: [purchaseId], references: [id])
   validator HouseMembership? @relation("ValidatorHouseMembership", fields: [validatorHouseMembershipId], references: [id])
 
   @@index([ticketId])
@@ -856,19 +916,19 @@ model TicketValidation {
 model Invoice {
   id String @id @default(auto()) @map("_id") @db.ObjectId
 
-  invoiceNumber   String @unique
-  organizationId  String @db.ObjectId
+  invoiceNumber     String @unique
+  organizationId    String @db.ObjectId
   houseMembershipId String @db.ObjectId
 
   amount      Float
-  currency    String @default("USD")
+  currency    String    @default("USD")
   description String?
   dueDate     DateTime?
-  items       Json    @default("[]")
+  items       Json      @default("[]")
 
   status      InvoiceStatus @default(DRAFT)
   paidAt      DateTime?
-  paidBy      String? @db.ObjectId
+  paidBy      String?       @db.ObjectId
   cancelledAt DateTime?
 
   createdBy String @db.ObjectId
@@ -898,21 +958,22 @@ enum InvoiceStatus {
   REFUNDED
 }
 
+// Fix the Payment model - remove fields and references from communityPurchases
 model Payment {
   id String @id @default(auto()) @map("_id") @db.ObjectId
 
-  organizationId          String @db.ObjectId
+  organizationId          String  @db.ObjectId
   houseId                 String? @db.ObjectId
-  userId                  String @db.ObjectId
+  userId                  String  @db.ObjectId
   houseMembershipId       String? @db.ObjectId
   ticketPurchaseId        String? @db.ObjectId
   membershipApplicationId String? @db.ObjectId
 
   stripePaymentId String
   amount          Float
-  currency        String @default("USD")
+  currency        String  @default("USD")
   description     String?
-  metadata        Json @default("{}")
+  metadata        Json    @default("{}")
 
   status     PaymentStatus @default(PENDING)
   paidAt     DateTime?
@@ -925,11 +986,14 @@ model Payment {
   ticketPurchase        TicketPurchase?        @relation(fields: [ticketPurchaseId], references: [id])
   membershipApplication MembershipApplication? @relation(fields: [membershipApplicationId], references: [id])
 
-  membershipItemId String? @db.ObjectId
+  membershipItemId String?         @db.ObjectId
   membershipItem   MembershipItem? @relation(fields: [membershipItemId], references: [id])
 
-  customerId String? @db.ObjectId
+  customerId String?   @db.ObjectId
   customer   Customer? @relation(fields: [customerId], references: [id])
+
+  // NEW: Community purchases relation - FIXED: removed fields and references
+  communityPurchases CommunityPurchase[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1092,11 +1156,11 @@ model AuditLog {
 }
 
 // ========================
-// MEMBERSHIP PLANS & SUBSCRIPTIONS
+// MEMBERSHIP PLANS
 // ========================
 model MembershipPlan {
-  id             String @id @default(auto()) @map("_id") @db.ObjectId
-  organizationId String @db.ObjectId
+  id             String  @id @default(auto()) @map("_id") @db.ObjectId
+  organizationId String  @db.ObjectId
   houseId        String? @db.ObjectId
 
   name        String
@@ -1108,6 +1172,8 @@ model MembershipPlan {
 
   isPublic         Boolean @default(true)
   requiresApproval Boolean @default(false)
+
+  settings Json?
 
   organization Organization @relation(fields: [organizationId], references: [id])
   house        House?       @relation(fields: [houseId], references: [id])
@@ -1128,17 +1194,16 @@ model MembershipPlan {
 }
 
 model PlanPrice {
-  id               String @id @default(auto()) @map("_id") @db.ObjectId
-  membershipPlanId String @db.ObjectId
+  id               String           @id @default(auto()) @map("_id") @db.ObjectId
+  membershipPlanId String           @db.ObjectId
   billingFrequency BillingFrequency
   amount           Float
-  currency         String @default("USD")
-  setupFee         Float? @default(0)
-  vatRate          Float? @default(0)
+  currency         String           @default("USD")
+  vatRate          Float?           @default(0)
   stripePriceId    String?
 
-  membershipPlan MembershipPlan @relation(fields: [membershipPlanId], references: [id])
-  membershipItems MembershipItem[]
+  membershipPlan         MembershipPlan          @relation(fields: [membershipPlanId], references: [id])
+  membershipItems        MembershipItem[]
   selectedByApplications MembershipApplication[] @relation("SelectedApplicationPrice")
 
   createdAt DateTime @default(now())
@@ -1191,14 +1256,14 @@ model MembershipApplication {
   hobbies       String?
   photoUrl      String?
 
-  status          ApplicationStatus @default(PENDING)
-  notes           String?
-  reviewedBy      String? @db.ObjectId
-  reviewedAt      DateTime?
+  status             ApplicationStatus @default(PENDING)
+  notes              String?
+  reviewedBy         String?           @db.ObjectId
+  reviewedAt         DateTime?
   movedToReviewingAt DateTime?
-  approvedAt      DateTime?
-  rejectedAt      DateTime?
-  rejectionReason String?
+  approvedAt         DateTime?
+  rejectedAt         DateTime?
+  rejectionReason    String?
 
   documents Json @default("[]")
   metadata  Json @default("{}")
@@ -1208,31 +1273,31 @@ model MembershipApplication {
   reviewTokenUsedAt    DateTime?
   reviewTokenExpiresAt DateTime?
 
-  selectedPlanId    String? @db.ObjectId
-  selectedPriceId   String? @db.ObjectId
-  selectedFrequency BillingFrequency?
-  selectedAmount    Float?
-  currency          String @default("USD")
-  vatRate           Float? @default(0)
-  initiationFee     Float? @default(0)
-  isInitiationWaived Boolean @default(false)
-  proratedAmount    Float?
-  finalAmount       Float?
+  selectedPlanId     String?           @db.ObjectId
+  selectedPriceId    String?           @db.ObjectId
+  selectedFrequency  BillingFrequency?
+  selectedAmount     Float?
+  currency           String            @default("USD")
+  vatRate            Float?            @default(0)
+  initiationFee      Float?            @default(0)
+  isInitiationWaived Boolean           @default(false)
+  proratedAmount     Float?
+  finalAmount        Float?
 
-  stripeCustomerId        String?
-  stripeSetupIntentId     String?
-  stripePaymentMethodId   String?
-  stripePaymentIntentId   String?
-  paymentAuthorizedAt     DateTime?
-  paymentProcessedAt      DateTime?
-  paymentFailedAt         DateTime?
-  paymentFailureMessage   String?
+  stripeCustomerId      String?
+  stripeSetupIntentId   String?
+  stripePaymentMethodId String?
+  stripePaymentIntentId String?
+  paymentAuthorizedAt   DateTime?
+  paymentProcessedAt    DateTime?
+  paymentFailedAt       DateTime?
+  paymentFailureMessage String?
 
   membershipNumber String?
 
-  createdUserId      String? @db.ObjectId
-  houseMembershipId  String? @db.ObjectId
-  membershipItemId   String? @db.ObjectId
+  createdUserId     String? @db.ObjectId
+  houseMembershipId String? @db.ObjectId
+  membershipItemId  String? @db.ObjectId
 
   organization   Organization    @relation(fields: [organizationId], references: [id])
   house          House           @relation(fields: [houseId], references: [id])
@@ -1241,8 +1306,8 @@ model MembershipApplication {
   selectedPlan  MembershipPlan? @relation("SelectedApplicationPlan", fields: [selectedPlanId], references: [id])
   selectedPrice PlanPrice?      @relation("SelectedApplicationPrice", fields: [selectedPriceId], references: [id])
 
-  reviewer       User?            @relation("ApplicationReviewer", fields: [reviewedBy], references: [id])
-  createdUser    User?            @relation("ApplicationCreatedUser", fields: [createdUserId], references: [id])
+  reviewer        User?            @relation("ApplicationReviewer", fields: [reviewedBy], references: [id])
+  createdUser     User?            @relation("ApplicationCreatedUser", fields: [createdUserId], references: [id])
   houseMembership HouseMembership? @relation(fields: [houseMembershipId], references: [id])
 
   payments Payment[]
@@ -1270,36 +1335,35 @@ enum ApplicationStatus {
 // MEMBERSHIP ITEMS (ACTIVE SUBSCRIPTIONS)
 // ========================
 model MembershipItem {
-  id               String @id @default(auto()) @map("_id") @db.ObjectId
-  organizationId   String @db.ObjectId
-  houseId          String @db.ObjectId
-  houseMembershipId String @db.ObjectId
-  membershipPlanId String @db.ObjectId
-  planPriceId      String? @db.ObjectId
-  userId           String @db.ObjectId
-  applicationId    String? @db.ObjectId
+  id                String  @id @default(auto()) @map("_id") @db.ObjectId
+  organizationId    String  @db.ObjectId
+  houseId           String  @db.ObjectId
+  houseMembershipId String  @db.ObjectId
+  membershipPlanId  String  @db.ObjectId
+  planPriceId       String? @db.ObjectId
+  userId            String  @db.ObjectId
+  applicationId     String? @db.ObjectId
 
   status    MembershipItemStatus @default(ACTIVE)
-  startDate DateTime @default(now())
+  startDate DateTime             @default(now())
   endDate   DateTime?
   cancelAt  DateTime?
 
   billingFrequency BillingFrequency
   amount           Float
-  currency         String @default("USD")
-  vatRate          Float? @default(0)
-  setupFee         Float? @default(0)
+  currency         String           @default("USD")
+  vatRate          Float?           @default(0)
 
-  customerId             String? @db.ObjectId
-  stripeSubscriptionId   String?
-  stripePaymentIntentId  String?
-  paymentStatus          PaymentStatus @default(PENDING)
-  nextBillingDate        DateTime?
-  lastBilledAt           DateTime?
-  failedPaymentCount     Int @default(0)
+  customerId            String?       @db.ObjectId
+  stripeSubscriptionId  String?
+  stripePaymentIntentId String?
+  paymentStatus         PaymentStatus @default(PENDING)
+  nextBillingDate       DateTime?
+  lastBilledAt          DateTime?
+  failedPaymentCount    Int           @default(0)
 
   cancellationReason String?
-  cancelledBy        String? @db.ObjectId
+  cancelledBy        String?   @db.ObjectId
   cancelledAt        DateTime?
   pausedAt           DateTime?
   resumedAt          DateTime?
@@ -1308,18 +1372,22 @@ model MembershipItem {
   proratedAdjustment Float?
   membershipNumber   String?
 
-  organization    Organization            @relation(fields: [organizationId], references: [id])
-  house           House                   @relation(fields: [houseId], references: [id])
-  houseMembership HouseMembership        @relation(fields: [houseMembershipId], references: [id])
-  membershipPlan  MembershipPlan         @relation(fields: [membershipPlanId], references: [id])
-  planPrice       PlanPrice?             @relation(fields: [planPriceId], references: [id])
-  user            User                   @relation(fields: [userId], references: [id])
-  customer        Customer?              @relation(fields: [customerId], references: [id])
-  cancelledByUser User?                  @relation("MembershipCanceller", fields: [cancelledBy], references: [id])
+  metadata Json?
 
-  invoices Invoice[]
-  payments Payment[]
+  organization    Organization    @relation(fields: [organizationId], references: [id])
+  house           House           @relation(fields: [houseId], references: [id])
+  houseMembership HouseMembership @relation(fields: [houseMembershipId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  membershipPlan  MembershipPlan  @relation(fields: [membershipPlanId], references: [id])
+  planPrice       PlanPrice?      @relation(fields: [planPriceId], references: [id])
+  user            User            @relation(fields: [userId], references: [id])
+  customer        Customer?       @relation(fields: [customerId], references: [id])
+  cancelledByUser User?           @relation("MembershipCanceller", fields: [cancelledBy], references: [id])
+
+  invoices             Invoice[]
+  payments             Payment[]
   cancellationRequests CancellationRequest[]
+
+  linkedSeats HouseMembership[] @relation("GroupSeat")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1403,4 +1471,527 @@ enum SubmissionStatus {
   REVIEWED
   APPROVED
   REJECTED
+}
+
+// ========================
+// NEW: COMMUNITY MODELS
+// ========================
+
+model Community {
+  id          String  @id @default(auto()) @map("_id") @db.ObjectId
+  name        String
+  slug        String
+  description String?
+  coverImage  String?
+  logoUrl     String?
+
+  houseId String @db.ObjectId
+  house   House  @relation(fields: [houseId], references: [id])
+
+  createdBy String @db.ObjectId
+  creator   User   @relation("CommunityCreator", fields: [createdBy], references: [id])
+
+  // Settings
+  isPrivate        Boolean @default(false)
+  requiresApproval Boolean @default(false)
+  maxMembers       Int?
+
+  // Community branding (overrides house)
+  useCustomBranding Boolean @default(false)
+  primaryColor      String?
+  secondaryColor    String?
+  accentColor       String?
+
+  // Live streaming
+  liveEnabled      Boolean   @default(true)
+  currentLiveUrl   String?
+  currentLiveTitle String?
+  liveStartedAt    DateTime?
+  liveViewers      Int       @default(0)
+
+  // Stats
+  memberCount  Int @default(0)
+  postCount    Int @default(0)
+  productCount Int @default(0)
+  liveCount    Int @default(0)
+
+  status CommunityStatus @default(ACTIVE)
+
+  // Relations
+  members     CommunityMember[]
+  posts       CommunityPost[]
+  products    CommunityProduct[]
+  liveStreams LiveStream[]
+  events      CommunityEvent[]
+  categories  CommunityCategory[]
+  moderators  CommunityModerator[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([houseId, slug])
+  @@index([houseId, status])
+  @@index([createdBy])
+}
+
+enum CommunityStatus {
+  ACTIVE
+  ARCHIVED
+  SUSPENDED
+}
+
+model CommunityMember {
+  id          String    @id @default(auto()) @map("_id") @db.ObjectId
+  communityId String    @db.ObjectId
+  community   Community @relation(fields: [communityId], references: [id])
+
+  houseMembershipId String          @db.ObjectId
+  houseMembership   HouseMembership @relation(fields: [houseMembershipId], references: [id])
+
+  userId String @db.ObjectId
+  user   User   @relation("CommunityMemberUser", fields: [userId], references: [id])
+
+  role   CommunityRole         @default(MEMBER)
+  status CommunityMemberStatus @default(ACTIVE)
+
+  joinedAt     DateTime  @default(now())
+  lastActiveAt DateTime?
+
+  notificationsEnabled Boolean  @default(true)
+  pinnedPosts          String[] @default([])
+
+  // Add opposite relations
+  eventRSVPs   CommunityEventRSVP[] @relation("MemberRSVPs")
+  moderatorFor CommunityModerator[] @relation("MemberModerator")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([communityId, houseMembershipId])
+  @@index([communityId, role])
+  @@index([userId])
+  @@index([status])
+  @@index([houseMembershipId])
+}
+
+enum CommunityRole {
+  MEMBER
+  MODERATOR
+  ADMIN
+  OWNER
+}
+
+enum CommunityMemberStatus {
+  ACTIVE
+  PENDING
+  BANNED
+  LEFT
+}
+
+model CommunityPost {
+  id          String    @id @default(auto()) @map("_id") @db.ObjectId
+  communityId String    @db.ObjectId
+  community   Community @relation(fields: [communityId], references: [id])
+
+  authorId String @db.ObjectId
+  author   User   @relation("PostAuthor", fields: [authorId], references: [id])
+
+  title   String?
+  content String?
+  type    PostType @default(TEXT)
+
+  mediaUrls    String[] @default([])
+  thumbnailUrl String?
+
+  likesCount    Int @default(0)
+  commentsCount Int @default(0)
+  sharesCount   Int @default(0)
+
+  isPinned       Boolean    @default(false)
+  isAnnouncement Boolean    @default(false)
+  status         PostStatus @default(PUBLISHED)
+
+  liveStreamId String?     @db.ObjectId
+  liveStream   LiveStream? @relation(fields: [liveStreamId], references: [id])
+
+  likes    CommunityPostLike[]
+  comments CommunityComment[]
+  shares   CommunityPostShare[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([communityId, createdAt])
+  @@index([authorId])
+  @@index([type])
+  @@index([isPinned, createdAt])
+}
+
+enum PostType {
+  TEXT
+  IMAGE
+  VIDEO
+  LINK
+  LIVE_CHAT
+  ANNOUNCEMENT
+}
+
+enum PostStatus {
+  DRAFT
+  PUBLISHED
+  DELETED
+  REPORTED
+}
+
+model CommunityComment {
+  id     String        @id @default(auto()) @map("_id") @db.ObjectId
+  postId String        @db.ObjectId
+  post   CommunityPost @relation(fields: [postId], references: [id])
+
+  authorId String @db.ObjectId
+  author   User   @relation("CommentAuthor", fields: [authorId], references: [id])
+
+  content  String
+  mediaUrl String?
+
+  likesCount Int               @default(0)
+  parentId   String?           @db.ObjectId
+  parent     CommunityComment? @relation("CommentThread", fields: [parentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  status CommentStatus @default(ACTIVE)
+
+  replies CommunityComment[]     @relation("CommentThread")
+  likes   CommunityCommentLike[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([postId, createdAt])
+  @@index([authorId])
+}
+
+enum CommentStatus {
+  ACTIVE
+  DELETED
+  REPORTED
+}
+
+model CommunityPostLike {
+  id     String        @id @default(auto()) @map("_id") @db.ObjectId
+  postId String        @db.ObjectId
+  post   CommunityPost @relation(fields: [postId], references: [id])
+  userId String        @db.ObjectId
+  user   User          @relation("UserPostLikes", fields: [userId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@unique([postId, userId])
+}
+
+model CommunityCommentLike {
+  id        String           @id @default(auto()) @map("_id") @db.ObjectId
+  commentId String           @db.ObjectId
+  comment   CommunityComment @relation(fields: [commentId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  userId    String           @db.ObjectId
+  user      User             @relation("UserCommentLikes", fields: [userId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@unique([commentId, userId])
+}
+
+model CommunityPostShare {
+  id       String        @id @default(auto()) @map("_id") @db.ObjectId
+  postId   String        @db.ObjectId
+  post     CommunityPost @relation(fields: [postId], references: [id])
+  userId   String        @db.ObjectId
+  user     User          @relation("UserPostShares", fields: [userId], references: [id])
+  sharedAt DateTime      @default(now())
+
+  @@unique([postId, userId])
+}
+
+model CommunityProduct {
+  id          String    @id @default(auto()) @map("_id") @db.ObjectId
+  communityId String    @db.ObjectId
+  community   Community @relation(fields: [communityId], references: [id])
+
+  sellerId String @db.ObjectId
+  seller   User   @relation("ProductSeller", fields: [sellerId], references: [id])
+
+  name           String
+  description    String?
+  price          Float
+  compareAtPrice Float?
+  currency       String  @default("USD")
+
+  type      ProductType @default(PHYSICAL)
+  category  String?
+  images    String[]    @default([])
+  inventory Int?
+
+  fileUrl       String?
+  downloadLimit Int?    @default(0)
+
+  isPublished      Boolean @default(false)
+  requiresShipping Boolean @default(false)
+  isDigital        Boolean @default(false)
+
+  salesCount Int   @default(0)
+  revenue    Float @default(0)
+
+  status ProductStatus @default(ACTIVE)
+
+  purchases CommunityPurchase[]
+
+    // Fee configuration for this product
+  houseFeePercent   Float?  @default(0)  // What % the house takes from this sale
+  platformFeePercent Float? @default(0)  // What % the platform takes
+  sellerPayoutAmount Float?              // Calculated amount seller receives after fees
+  houseEarnings      Float?              // Calculated amount house earns
+  platformEarnings   Float?              // Calculated amount platform earns
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([communityId, status])
+  @@index([sellerId])
+  @@index([type])
+}
+
+enum ProductType {
+  PHYSICAL
+  DIGITAL
+  SERVICE
+  DONATION
+}
+
+enum ProductStatus {
+  ACTIVE
+  OUT_OF_STOCK
+  DISCONTINUED
+  DRAFT
+}
+
+model CommunityPurchase {
+  id        String           @id @default(auto()) @map("_id") @db.ObjectId
+  productId String           @db.ObjectId
+  product   CommunityProduct @relation(fields: [productId], references: [id])
+
+  buyerId String @db.ObjectId
+  buyer   User   @relation("PurchaseBuyer", fields: [buyerId], references: [id])
+
+  quantity    Int    @default(1)
+  unitPrice   Float
+  totalAmount Float
+  currency    String @default("USD")
+
+  shippingAddress Json?
+  trackingNumber  String?
+  shippedAt       DateTime?
+  deliveredAt     DateTime?
+
+  downloadToken   String?
+  downloadExpires DateTime?
+  downloadCount   Int       @default(0)
+
+  paymentId String?  @db.ObjectId
+  payment   Payment? @relation(fields: [paymentId], references: [id])
+
+  status PurchaseStatus @default(PENDING)
+
+  // Fee tracking
+  houseFeeAmount    Float?  // Amount taken by house
+  platformFeeAmount Float?  // Amount taken by platform
+  sellerPayoutAmount Float? // Amount seller receives
+  houseFeePercent   Float?  // Percentage applied
+  platformFeePercent Float? // Percentage applied
+  
+  // Payout tracking
+  sellerPaidAt      DateTime?
+  housePaidAt       DateTime?
+  platformPaidAt    DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([productId])
+  @@index([buyerId])
+  @@index([status])
+}
+
+enum PurchaseStatus {
+  PENDING
+  COMPLETED
+  SHIPPED
+  DELIVERED
+  CANCELLED
+  REFUNDED
+}
+
+model LiveStream {
+  id          String    @id @default(auto()) @map("_id") @db.ObjectId
+  communityId String    @db.ObjectId
+  community   Community @relation(fields: [communityId], references: [id])
+
+  hostId String @db.ObjectId
+  host   User   @relation("StreamHost", fields: [hostId], references: [id])
+
+  title       String
+  description String?
+  thumbnail   String?
+
+  streamUrl   String
+  streamKey   String @unique
+  viewerCount Int    @default(0)
+
+  chatEnabled    Boolean @default(true)
+  chatModeration Boolean @default(false)
+
+  recordStream Boolean @default(false)
+  recordingUrl String?
+
+  scheduledFor DateTime?
+  startedAt    DateTime?
+  endedAt      DateTime?
+
+  status LiveStreamStatus @default(SCHEDULED)
+
+  messages CommunityPost[]
+  viewers  LiveStreamViewer[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  // Remove the duplicate @@index([streamKey]) since streamKey already has @unique
+
+  @@index([communityId, status])
+  @@index([hostId])
+}
+
+enum LiveStreamStatus {
+  SCHEDULED
+  LIVE
+  ENDED
+  CANCELLED
+}
+
+model LiveStreamViewer {
+  id       String     @id @default(auto()) @map("_id") @db.ObjectId
+  streamId String     @db.ObjectId
+  stream   LiveStream @relation(fields: [streamId], references: [id])
+
+  viewerId String @db.ObjectId
+  viewer   User   @relation("UserStreamViewer", fields: [viewerId], references: [id])
+
+  joinedAt DateTime  @default(now())
+  leftAt   DateTime?
+  duration Int?
+
+  @@unique([streamId, viewerId])
+  @@index([streamId])
+  @@index([viewerId])
+}
+
+model CommunityEvent {
+  id          String    @id @default(auto()) @map("_id") @db.ObjectId
+  communityId String    @db.ObjectId
+  community   Community @relation(fields: [communityId], references: [id])
+
+  organizerId String @db.ObjectId
+  organizer   User   @relation("EventOrganizer", fields: [organizerId], references: [id])
+
+  title       String
+  description String?
+  location    String?
+  onlineUrl   String?
+
+  startAt DateTime
+  endAt   DateTime
+
+  isVirtual    Boolean @default(false)
+  requiresRSVP Boolean @default(true)
+  maxAttendees Int?
+
+  attendeeCount Int @default(0)
+
+  status CommunityEventStatus @default(SCHEDULED)
+
+  rsvps CommunityEventRSVP[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([communityId, startAt])
+  @@index([organizerId])
+  @@index([status])
+}
+
+enum CommunityEventStatus {
+  SCHEDULED
+  ONGOING
+  COMPLETED
+  CANCELLED
+}
+
+model CommunityEventRSVP {
+  id      String         @id @default(auto()) @map("_id") @db.ObjectId
+  eventId String         @db.ObjectId
+  event   CommunityEvent @relation(fields: [eventId], references: [id])
+
+  memberId String          @db.ObjectId
+  member   CommunityMember @relation("MemberRSVPs", fields: [memberId], references: [id])
+
+  userId String @db.ObjectId
+  user   User   @relation("UserRSVPs", fields: [userId], references: [id])
+
+  status     CommunityRSVPStatus @default(CONFIRMED)
+  attendedAt DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@unique([eventId, memberId])
+}
+
+enum CommunityRSVPStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+  ATTENDED
+  NO_SHOW
+}
+
+model CommunityCategory {
+  id          String    @id @default(auto()) @map("_id") @db.ObjectId
+  communityId String    @db.ObjectId
+  community   Community @relation(fields: [communityId], references: [id])
+
+  name        String
+  slug        String
+  description String?
+  icon        String?
+
+  postCount Int @default(0)
+
+  createdAt DateTime @default(now())
+
+  @@unique([communityId, slug])
+}
+
+model CommunityModerator {
+  id          String    @id @default(auto()) @map("_id") @db.ObjectId
+  communityId String    @db.ObjectId
+  community   Community @relation(fields: [communityId], references: [id])
+
+  moderatorId String          @db.ObjectId
+  moderator   CommunityMember @relation("MemberModerator", fields: [moderatorId], references: [id])
+
+  userId String @db.ObjectId
+  user   User   @relation("UserModerator", fields: [userId], references: [id])
+
+  permissions Json @default("[]")
+
+  assignedBy String   @db.ObjectId
+  assignedAt DateTime @default(now())
+
+  @@unique([communityId, moderatorId])
 }

@@ -1,4 +1,4 @@
-// app/portal/[houseSlug]/settings/page.tsx
+// app/portal/[houseSlug]/settings/page.tsx - Add branding state and apply theme
 'use client'
 
 import { useState, useEffect } from 'react'
@@ -25,6 +25,10 @@ import {
   Monitor,
   Info,
 } from 'lucide-react'
+import { ThemeBadge } from '@/components/ui/ThemeBadge'
+import { ThemeButton } from '@/components/ui/ThemeButton'
+import { ThemeCard } from '@/components/ui/ThemeCard'
+import { ThemeInput } from '@/components/ui/ThemeInput'
 
 // Profile Settings Schema - Email and Name are NOT editable
 const profileSchema = z.object({
@@ -58,6 +62,18 @@ type ProfileForm = z.infer<typeof profileSchema>
 type PasswordForm = z.infer<typeof passwordSchema>
 type NotificationForm = z.infer<typeof notificationSchema>
 
+interface BrandingTheme {
+  primaryColor: string
+  secondaryColor: string
+  accentColor: string
+  backgroundColor: string
+  textColor: string
+  borderRadius: string
+  buttonStyle: string
+  fontFamily: string
+  logoUrl: string | null
+}
+
 interface SettingsData {
   dashboard: any
   profile: any
@@ -69,6 +85,9 @@ interface SettingsData {
     image: string | null
     phone: string | null
   }
+  branding: BrandingTheme
+  houseName: string
+  houseSlug: string
 }
 
 export default function SettingsPage() {
@@ -133,6 +152,22 @@ export default function SettingsPage() {
   useEffect(() => {
     fetchSettings()
   }, [houseSlug])
+
+  // Apply branding theme to CSS variables
+  useEffect(() => {
+    if (settingsData?.branding) {
+      const root = document.documentElement
+      const branding = settingsData.branding
+      
+      root.style.setProperty('--theme-primary', branding.primaryColor)
+      root.style.setProperty('--theme-secondary', branding.secondaryColor)
+      root.style.setProperty('--theme-accent', branding.accentColor)
+      root.style.setProperty('--theme-background', branding.backgroundColor)
+      root.style.setProperty('--theme-text', branding.textColor)
+      root.style.setProperty('--theme-radius', branding.borderRadius)
+      root.style.setProperty('--theme-font', branding.fontFamily)
+    }
+  }, [settingsData?.branding])
 
   const fetchSettings = async () => {
     try {
@@ -296,24 +331,25 @@ export default function SettingsPage() {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-96">
-        <Loader2 className="h-8 w-8 animate-spin text-purple-600" />
+        <Loader2 className="h-8 w-8 animate-spin text-theme-primary" />
       </div>
     )
   }
 
   const privacySettings = settingsData?.profile?.privacySettings || {}
+  const branding = settingsData?.branding
 
   return (
     <div className="space-y-6 max-w-4xl mx-auto">
-      {/* Header */}
+      {/* Header with House Name */}
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Settings</h1>
         <p className="text-sm text-gray-500 mt-1">
-          Manage your account settings and preferences
+          Manage your account settings and preferences for {settingsData?.houseName}
         </p>
       </div>
 
-      {/* Tabs */}
+      {/* Tabs - Using theme colors */}
       <div className="bg-white rounded-xl border border-gray-200">
         <div className="border-b border-gray-200">
           <nav className="flex gap-1 px-4 overflow-x-auto">
@@ -329,7 +365,7 @@ export default function SettingsPage() {
                 onClick={() => setActiveTab(tab.id as any)}
                 className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition whitespace-nowrap ${
                   activeTab === tab.id
-                    ? 'border-purple-600 text-purple-700'
+                    ? 'border-theme-primary text-theme-primary'
                     : 'border-transparent text-gray-500 hover:text-gray-700'
                 }`}
               >
@@ -344,9 +380,7 @@ export default function SettingsPage() {
           {/* Profile Tab */}
           {activeTab === 'profile' && (
             <form onSubmit={handleSubmitProfile(onSaveProfile)} className="space-y-6">
-              <div>
-                <h3 className="text-lg font-medium text-gray-900 mb-4">Profile Information</h3>
-                
+              <ThemeCard title="Profile Information" icon="User" color="primary">
                 {/* Read-only notice */}
                 <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
                   <p className="text-sm text-blue-800 flex items-start gap-2">
@@ -391,23 +425,14 @@ export default function SettingsPage() {
                     <p className="mt-1 text-xs text-gray-500">Contact admin to update</p>
                   </div>
 
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                      Phone Number
-                    </label>
-                    <div className="relative">
-                      <Smartphone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-                      <input
-                        {...registerProfile('phone')}
-                        type="tel"
-                        placeholder="Optional"
-                        className="w-full pl-10 pr-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
-                      />
-                    </div>
-                    {profileErrors.phone && (
-                      <p className="mt-1 text-sm text-red-600">{profileErrors.phone.message}</p>
-                    )}
-                  </div>
+                  <ThemeInput
+                    label="Phone Number"
+                    icon={Smartphone}
+                    {...registerProfile('phone')}
+                    type="tel"
+                    placeholder="Optional"
+                    error={profileErrors.phone?.message}
+                  />
 
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1.5">
@@ -415,7 +440,7 @@ export default function SettingsPage() {
                     </label>
                     <select
                       {...registerProfile('language')}
-                      className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
+                      className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-theme-primary focus:border-theme-primary"
                     >
                       <option value="en">English</option>
                       <option value="es">Español</option>
@@ -430,7 +455,7 @@ export default function SettingsPage() {
                     </label>
                     <select
                       {...registerProfile('timezone')}
-                      className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
+                      className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-theme-primary focus:border-theme-primary"
                     >
                       <option value="UTC">UTC</option>
                       <option value="America/New_York">Eastern Time</option>
@@ -442,18 +467,14 @@ export default function SettingsPage() {
                     </select>
                   </div>
                 </div>
-              </div>
+              </ThemeCard>
 
               {isProfileDirty && (
                 <div className="flex justify-end">
-                  <button
-                    type="submit"
-                    disabled={isSaving}
-                    className="inline-flex items-center gap-2 px-6 py-2.5 text-sm font-medium text-white bg-purple-600 rounded-lg hover:bg-purple-700 disabled:opacity-50"
-                  >
-                    {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                  <ThemeButton type="submit" loading={isSaving}>
+                    <Save className="h-4 w-4 mr-2" />
                     Save Changes
-                  </button>
+                  </ThemeButton>
                 </div>
               )}
             </form>
@@ -462,9 +483,7 @@ export default function SettingsPage() {
           {/* Notifications Tab */}
           {activeTab === 'notifications' && (
             <form onSubmit={handleSubmitNotification(onSaveNotifications)} className="space-y-6">
-              <div>
-                <h3 className="text-lg font-medium text-gray-900 mb-4">Email Digest</h3>
-                
+              <ThemeCard title="Email Digest" icon="Bell" color="secondary">
                 <div className="space-y-3">
                   <label className="flex items-center justify-between py-2">
                     <div>
@@ -474,7 +493,7 @@ export default function SettingsPage() {
                     <input
                       {...registerNotification('emailDigest')}
                       type="checkbox"
-                      className="h-4 w-4 text-purple-600 rounded"
+                      className="h-4 w-4 text-theme-primary rounded focus:ring-theme-primary"
                     />
                   </label>
 
@@ -485,7 +504,7 @@ export default function SettingsPage() {
                       </label>
                       <select
                         {...registerNotification('digestFrequency')}
-                        className="w-full md:w-64 px-3 py-2 border border-gray-300 rounded-lg"
+                        className="w-full md:w-64 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-theme-primary"
                       >
                         <option value="daily">Daily</option>
                         <option value="weekly">Weekly</option>
@@ -494,11 +513,9 @@ export default function SettingsPage() {
                     </div>
                   )}
                 </div>
-              </div>
+              </ThemeCard>
 
-              <div>
-                <h3 className="text-lg font-medium text-gray-900 mb-4">Notification Preferences</h3>
-                
+              <ThemeCard title="Notification Preferences" icon="Bell" color="secondary">
                 <div className="space-y-3">
                   {[
                     { name: 'eventReminders', label: 'Event reminders', description: 'Get notified about upcoming events' },
@@ -515,23 +532,19 @@ export default function SettingsPage() {
                       <input
                         {...registerNotification(item.name as any)}
                         type="checkbox"
-                        className="h-4 w-4 text-purple-600 rounded"
+                        className="h-4 w-4 text-theme-primary rounded focus:ring-theme-primary"
                       />
                     </label>
                   ))}
                 </div>
-              </div>
+              </ThemeCard>
 
               {isNotificationDirty && (
                 <div className="flex justify-end">
-                  <button
-                    type="submit"
-                    disabled={isSaving}
-                    className="inline-flex items-center gap-2 px-6 py-2.5 text-sm font-medium text-white bg-purple-600 rounded-lg hover:bg-purple-700 disabled:opacity-50"
-                  >
-                    {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                  <ThemeButton type="submit" loading={isSaving}>
+                    <Save className="h-4 w-4 mr-2" />
                     Save Preferences
-                  </button>
+                  </ThemeButton>
                 </div>
               )}
             </form>
@@ -540,8 +553,7 @@ export default function SettingsPage() {
           {/* Privacy Tab */}
           {activeTab === 'privacy' && (
             <div className="space-y-6">
-              <div>
-                <h3 className="text-lg font-medium text-gray-900 mb-4">Profile Visibility</h3>
+              <ThemeCard title="Profile Visibility" icon="Shield" color="accent">
                 <p className="text-sm text-gray-500 mb-4">Control what information is visible to other members.</p>
                 
                 <div className="space-y-3">
@@ -561,22 +573,20 @@ export default function SettingsPage() {
                           const newSettings = { ...privacySettings, [item.key]: e.target.checked }
                           onSavePrivacy(newSettings)
                         }}
-                        className="h-4 w-4 text-purple-600 rounded"
+                        className="h-4 w-4 text-theme-primary rounded focus:ring-theme-primary"
                       />
                     </label>
                   ))}
                 </div>
-              </div>
+              </ThemeCard>
             </div>
           )}
 
           {/* Security Tab */}
           {activeTab === 'security' && (
             <div className="space-y-6">
-              <div>
-                <h3 className="text-lg font-medium text-gray-900 mb-4">Change Password</h3>
-                
-                <form onSubmit={handleSubmitPassword(onChangePassword)} className="space-y-4 max-w-md">
+              <ThemeCard title="Change Password" icon="Lock" color="primary">
+                <form onSubmit={handleSubmitPassword(onChangePassword)} className="space-y-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1.5">
                       Current Password
@@ -586,7 +596,7 @@ export default function SettingsPage() {
                       <input
                         {...registerPassword('currentPassword')}
                         type={showCurrentPassword ? 'text' : 'password'}
-                        className="w-full pl-10 pr-10 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
+                        className="w-full pl-10 pr-10 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-theme-primary focus:border-theme-primary"
                       />
                       <button
                         type="button"
@@ -610,7 +620,7 @@ export default function SettingsPage() {
                       <input
                         {...registerPassword('newPassword')}
                         type={showNewPassword ? 'text' : 'password'}
-                        className="w-full pl-10 pr-10 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
+                        className="w-full pl-10 pr-10 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-theme-primary focus:border-theme-primary"
                       />
                       <button
                         type="button"
@@ -634,7 +644,7 @@ export default function SettingsPage() {
                       <input
                         {...registerPassword('confirmPassword')}
                         type={showConfirmPassword ? 'text' : 'password'}
-                        className="w-full pl-10 pr-10 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
+                        className="w-full pl-10 pr-10 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-theme-primary focus:border-theme-primary"
                       />
                       <button
                         type="button"
@@ -649,20 +659,14 @@ export default function SettingsPage() {
                     )}
                   </div>
 
-                  <button
-                    type="submit"
-                    disabled={isChangingPassword}
-                    className="inline-flex items-center gap-2 px-6 py-2.5 text-sm font-medium text-white bg-purple-600 rounded-lg hover:bg-purple-700 disabled:opacity-50"
-                  >
-                    {isChangingPassword ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Change Password'}
-                  </button>
+                  <ThemeButton type="submit" loading={isChangingPassword}>
+                    Change Password
+                  </ThemeButton>
                 </form>
-              </div>
+              </ThemeCard>
 
               {/* Account Deletion Notice */}
-              <div className="border-t border-gray-200 pt-6">
-                <h3 className="text-lg font-medium text-gray-900 mb-4">Account Deletion</h3>
-                
+              <ThemeCard title="Account Deletion" icon="Shield" color="danger">
                 <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
                   <p className="text-sm text-yellow-800">
                     <strong>Members cannot delete their own accounts.</strong> This is because your membership and billing records must be retained for legal and accounting purposes.
@@ -675,21 +679,19 @@ export default function SettingsPage() {
                     .
                   </p>
                 </div>
-              </div>
+              </ThemeCard>
             </div>
           )}
 
           {/* Appearance Tab */}
           {activeTab === 'appearance' && (
             <div className="space-y-6">
-              <div>
-                <h3 className="text-lg font-medium text-gray-900 mb-4">Theme</h3>
-                
+              <ThemeCard title="Theme" icon="Globe" color="accent">
                 <div className="grid grid-cols-3 gap-4">
                   <button
                     onClick={() => setTheme('light')}
                     className={`p-4 rounded-xl border-2 transition ${
-                      theme === 'light' ? 'border-purple-500 bg-purple-50' : 'border-gray-200 hover:border-gray-300'
+                      theme === 'light' ? 'border-theme-primary bg-theme-primary/10' : 'border-gray-200 hover:border-gray-300'
                     }`}
                   >
                     <Sun className="h-6 w-6 mx-auto mb-2 text-gray-700" />
@@ -699,7 +701,7 @@ export default function SettingsPage() {
                   <button
                     onClick={() => setTheme('dark')}
                     className={`p-4 rounded-xl border-2 transition ${
-                      theme === 'dark' ? 'border-purple-500 bg-purple-50' : 'border-gray-200 hover:border-gray-300'
+                      theme === 'dark' ? 'border-theme-primary bg-theme-primary/10' : 'border-gray-200 hover:border-gray-300'
                     }`}
                   >
                     <Moon className="h-6 w-6 mx-auto mb-2 text-gray-700" />
@@ -709,14 +711,14 @@ export default function SettingsPage() {
                   <button
                     onClick={() => setTheme('system')}
                     className={`p-4 rounded-xl border-2 transition ${
-                      theme === 'system' ? 'border-purple-500 bg-purple-50' : 'border-gray-200 hover:border-gray-300'
+                      theme === 'system' ? 'border-theme-primary bg-theme-primary/10' : 'border-gray-200 hover:border-gray-300'
                     }`}
                   >
                     <Monitor className="h-6 w-6 mx-auto mb-2 text-gray-700" />
                     <p className="text-sm font-medium">System</p>
                   </button>
                 </div>
-              </div>
+              </ThemeCard>
             </div>
           )}
         </div>

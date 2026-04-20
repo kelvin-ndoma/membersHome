@@ -18,6 +18,11 @@ import {
   Globe,
   Lock,
   Save,
+  Building2,
+  Users,
+  Percent,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react'
 
 const priceSchema = z.object({
@@ -25,7 +30,7 @@ const priceSchema = z.object({
   billingFrequency: z.enum(['MONTHLY', 'QUARTERLY', 'SEMI_ANNUAL', 'ANNUAL']),
   amount: z.number().min(0, 'Price must be 0 or greater'),
   currency: z.string().default('USD'),
-  setupFee: z.number().min(0).default(0),
+  // setupFee removed
 })
 
 const planSchema = z.object({
@@ -37,6 +42,15 @@ const planSchema = z.object({
   requiresApproval: z.boolean().default(false),
   status: z.enum(['ACTIVE', 'INACTIVE', 'ARCHIVED']).default('ACTIVE'),
   prices: z.array(priceSchema).min(1, 'At least one price option is required'),
+  
+  // Advanced Settings
+  settings: z.object({
+    serviceFee: z.number().min(0).max(100).default(0),
+    initiationFee: z.number().min(0).default(0),
+    initiationFeeWaivable: z.boolean().default(false),
+    isGroupPlan: z.boolean().default(false),
+    seatsIncluded: z.number().min(1).default(1),
+  }).default({}),
 })
 
 type PlanForm = z.infer<typeof planSchema>
@@ -54,6 +68,7 @@ export default function EditPlanPage({ params }: EditPlanPageProps) {
   const [isLoading, setIsLoading] = useState(false)
   const [isLoadingPlan, setIsLoadingPlan] = useState(true)
   const [newFeature, setNewFeature] = useState('')
+  const [showAdvanced, setShowAdvanced] = useState(false)
   
   const {
     register,
@@ -72,6 +87,13 @@ export default function EditPlanPage({ params }: EditPlanPageProps) {
       status: 'ACTIVE',
       features: [],
       prices: [],
+      settings: {
+        serviceFee: 0,
+        initiationFee: 0,
+        initiationFeeWaivable: false,
+        isGroupPlan: false,
+        seatsIncluded: 1,
+      },
     }
   })
 
@@ -81,6 +103,7 @@ export default function EditPlanPage({ params }: EditPlanPageProps) {
   })
 
   const features = watch('features') || []
+  const isGroupPlan = watch('settings.isGroupPlan')
 
   // Fetch plan data
   useEffect(() => {
@@ -96,6 +119,7 @@ export default function EditPlanPage({ params }: EditPlanPageProps) {
         }
 
         const plan = data.plan
+        const settings = (plan.settings as any) || {}
         
         reset({
           name: plan.name,
@@ -110,9 +134,20 @@ export default function EditPlanPage({ params }: EditPlanPageProps) {
             billingFrequency: p.billingFrequency,
             amount: p.amount,
             currency: p.currency,
-            setupFee: p.setupFee || 0,
           })),
+          settings: {
+            serviceFee: settings.serviceFee || 0,
+            initiationFee: settings.initiationFee || 0,
+            initiationFeeWaivable: settings.initiationFeeWaivable || false,
+            isGroupPlan: settings.isGroupPlan || false,
+            seatsIncluded: settings.seatsIncluded || 1,
+          },
         })
+        
+        // Auto-expand advanced if there are settings
+        if (settings.serviceFee > 0 || settings.initiationFee > 0 || settings.isGroupPlan) {
+          setShowAdvanced(true)
+        }
       } catch (error) {
         toast.error('Failed to load plan')
         router.push(`/org/${params.orgSlug}/houses/${params.houseSlug}/plans`)
@@ -140,7 +175,6 @@ export default function EditPlanPage({ params }: EditPlanPageProps) {
       billingFrequency: 'MONTHLY',
       amount: 0,
       currency: 'USD',
-      setupFee: 0,
     })
   }
 
@@ -221,12 +255,16 @@ export default function EditPlanPage({ params }: EditPlanPageProps) {
                   Plan Name *
                 </label>
                 <div className="relative">
-                  <Package className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                  {isGroupPlan ? (
+                    <Building2 className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                  ) : (
+                    <Package className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                  )}
                   <input
                     {...register('name')}
                     type="text"
                     className="block w-full pl-10 pr-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    placeholder="Premium Membership"
+                    placeholder={isGroupPlan ? "Corporate Membership" : "Premium Membership"}
                   />
                 </div>
                 {errors.name && (
@@ -311,8 +349,8 @@ export default function EditPlanPage({ params }: EditPlanPageProps) {
                     )}
                   </div>
                   
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                    <div className="col-span-2 md:col-span-1">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <div>
                       <label className="block text-xs text-gray-500 mb-1">Frequency</label>
                       <select
                         {...register(`prices.${index}.billingFrequency`)}
@@ -345,29 +383,14 @@ export default function EditPlanPage({ params }: EditPlanPageProps) {
                         {...register(`prices.${index}.currency`)}
                         className="block w-full px-2 py-1.5 text-sm border border-gray-300 rounded-lg"
                       >
-                        <option value="USD">USD</option>
-                        <option value="EUR">EUR</option>
-                        <option value="GBP">GBP</option>
+                        <option value="USD">USD ($)</option>
+                        <option value="KES">KES (KSh)</option>
+                        <option value="EUR">EUR (€)</option>
+                        <option value="GBP">GBP (£)</option>
                       </select>
-                    </div>
-                    
-                    <div>
-                      <label className="block text-xs text-gray-500 mb-1">Setup Fee</label>
-                      <div className="relative">
-                        <DollarSign className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-gray-400" />
-                        <input
-                          {...register(`prices.${index}.setupFee`, { valueAsNumber: true })}
-                          type="number"
-                          step="0.01"
-                          min="0"
-                          className="block w-full pl-6 pr-2 py-1.5 text-sm border border-gray-300 rounded-lg"
-                          placeholder="0.00"
-                        />
-                      </div>
                     </div>
                   </div>
                   
-                  {/* Hidden ID field for existing prices */}
                   {field.id && (
                     <input type="hidden" {...register(`prices.${index}.id`)} />
                   )}
@@ -419,9 +442,114 @@ export default function EditPlanPage({ params }: EditPlanPageProps) {
             )}
           </div>
 
-          {/* Settings */}
+          {/* Advanced Settings */}
+          <div className="space-y-4 pt-4 border-t border-gray-100">
+            <button
+              type="button"
+              onClick={() => setShowAdvanced(!showAdvanced)}
+              className="flex items-center gap-2 text-sm font-medium text-gray-700 hover:text-gray-900"
+            >
+              <Package className="h-4 w-4" />
+              Advanced Settings
+              {showAdvanced ? (
+                <ChevronUp className="h-4 w-4" />
+              ) : (
+                <ChevronDown className="h-4 w-4" />
+              )}
+            </button>
+
+            {showAdvanced && (
+              <div className="space-y-4 bg-gray-50 rounded-lg p-4">
+                {/* Group Plan Setting */}
+                <label className="flex items-center gap-3">
+                  <input
+                    {...register('settings.isGroupPlan')}
+                    type="checkbox"
+                    className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                  />
+                  <div>
+                    <span className="text-sm font-medium text-gray-900">Group/Corporate Plan</span>
+                    <p className="text-xs text-gray-500">One payer, multiple member seats</p>
+                  </div>
+                  <Building2 className="h-4 w-4 text-gray-400 ml-auto" />
+                </label>
+
+                {isGroupPlan && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                      Number of Seats Included
+                    </label>
+                    <div className="relative">
+                      <Users className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                      <input
+                        {...register('settings.seatsIncluded', { valueAsNumber: true })}
+                        type="number"
+                        min="1"
+                        className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* Service Fee */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                    Service Fee Percentage
+                  </label>
+                  <div className="relative">
+                    <Percent className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                    <input
+                      {...register('settings.serviceFee', { valueAsNumber: true })}
+                      type="number"
+                      step="0.1"
+                      min="0"
+                      max="100"
+                      className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                      placeholder="3.0"
+                    />
+                  </div>
+                  <p className="text-xs text-gray-500 mt-1">Applied to each billing cycle</p>
+                </div>
+
+                {/* Initiation Fee */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                    Initiation Fee
+                  </label>
+                  <div className="relative">
+                    <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                    <input
+                      {...register('settings.initiationFee', { valueAsNumber: true })}
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                      placeholder="250.00"
+                    />
+                  </div>
+                </div>
+
+                {/* Waivable Initiation Fee */}
+                {watch('settings.initiationFee') > 0 && (
+                  <label className="flex items-center gap-3">
+                    <input
+                      {...register('settings.initiationFeeWaivable')}
+                      type="checkbox"
+                      className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                    />
+                    <div>
+                      <span className="text-sm font-medium text-gray-900">Initiation fee can be waived</span>
+                      <p className="text-xs text-gray-500">Admins can waive this fee during approval</p>
+                    </div>
+                  </label>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Visibility Settings */}
           <div className="space-y-3 pt-4 border-t border-gray-100">
-            <h2 className="text-lg font-semibold text-gray-900">Settings</h2>
+            <h2 className="text-lg font-semibold text-gray-900">Visibility</h2>
             
             <label className="flex items-center gap-3">
               <input

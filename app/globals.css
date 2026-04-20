@@ -1,6 +1,7 @@
 /* app/globals.css */
 @import "tailwindcss";
 
+/* Your existing theme variables */
 @theme {
   --color-background: hsl(0, 0%, 100%);
   --color-foreground: hsl(222.2, 84%, 4.9%);
@@ -21,6 +22,51 @@
   --color-muted: hsl(217.2, 32.6%, 17.5%);
   --color-muted-foreground: hsl(215, 20.2%, 65.1%);
   --color-border: hsl(216, 34%, 17%);
+}
+
+/* ADD THIS - Dynamic theme variables from platform/org settings */
+:root {
+  --theme-primary: #3B82F6;
+  --theme-secondary: #1E40AF;
+  --theme-accent: #10B981;
+  --theme-background: #F9FAFB;
+  --theme-text: #111827;
+  --theme-radius: 0.5rem;
+  --theme-font: Inter, sans-serif;
+}
+
+/* Apply dynamic theme to body */
+body {
+  font-family: var(--theme-font);
+}
+
+/* Utility classes for dynamic theming */
+.bg-theme-primary {
+  background-color: var(--theme-primary);
+}
+
+.bg-theme-secondary {
+  background-color: var(--theme-secondary);
+}
+
+.bg-theme-accent {
+  background-color: var(--theme-accent);
+}
+
+.text-theme-primary {
+  color: var(--theme-primary);
+}
+
+.text-theme-text {
+  color: var(--theme-text);
+}
+
+.border-theme-primary {
+  border-color: var(--theme-primary);
+}
+
+.rounded-theme {
+  border-radius: var(--theme-radius);
 }
 
 html {

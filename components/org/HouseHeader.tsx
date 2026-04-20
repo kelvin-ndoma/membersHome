@@ -1,9 +1,10 @@
 // components/org/HouseHeader.tsx
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { useSession } from 'next-auth/react'
+import Image from 'next/image'
 import { 
   Menu,
   Home,
@@ -24,12 +25,28 @@ interface HouseHeaderProps {
   houseSlug: string
   houseName: string
   userRole: string
+  houseLogo?: string | null
+  orgLogo?: string | null
+  useCustomBranding?: boolean
 }
 
-export default function HouseHeader({ orgSlug, houseSlug, houseName, userRole }: HouseHeaderProps) {
+export default function HouseHeader({ 
+  orgSlug, 
+  houseSlug, 
+  houseName, 
+  userRole,
+  houseLogo,
+  orgLogo,
+  useCustomBranding = false
+}: HouseHeaderProps) {
   const { data: session } = useSession()
   const [showUserMenu, setShowUserMenu] = useState(false)
   const [showMobileMenu, setShowMobileMenu] = useState(false)
+  const [logoError, setLogoError] = useState(false)
+
+  // Determine which logo to display (house logo overrides org logo)
+  const displayLogo = useCustomBranding && houseLogo ? houseLogo : orgLogo
+  const hasLogo = displayLogo && !logoError
 
   const getRoleBadge = () => {
     const roles: Record<string, { label: string; color: string }> = {
@@ -57,6 +74,23 @@ export default function HouseHeader({ orgSlug, houseSlug, houseName, userRole }:
               >
                 <Menu className="h-6 w-6" />
               </button>
+
+              {/* Logo Section */}
+              {hasLogo && (
+                <div className="hidden sm:flex items-center">
+                  <div className="relative h-8 w-auto min-w-[100px]">
+                    <Image
+                      src={displayLogo}
+                      alt={`${houseName} logo`}
+                      width={100}
+                      height={32}
+                      className="h-8 w-auto object-contain"
+                      onError={() => setLogoError(true)}
+                    />
+                  </div>
+                  <div className="mx-2 text-gray-300">|</div>
+                </div>
+              )}
 
               {/* Breadcrumb Navigation */}
               <div className="hidden sm:flex items-center gap-2 text-sm">
@@ -89,9 +123,11 @@ export default function HouseHeader({ orgSlug, houseSlug, houseName, userRole }:
 
               {/* House Name & Role */}
               <div className="hidden md:flex items-center gap-2 ml-2 pl-2 border-l border-gray-200">
-                <div className="w-7 h-7 bg-gradient-to-br from-green-500 to-emerald-500 rounded-lg flex items-center justify-center">
-                  <Home className="h-4 w-4 text-white" />
-                </div>
+                {!hasLogo && (
+                  <div className="w-7 h-7 bg-gradient-to-br from-green-500 to-emerald-500 rounded-lg flex items-center justify-center">
+                    <Home className="h-4 w-4 text-white" />
+                  </div>
+                )}
                 <span className={`px-2 py-0.5 text-xs font-medium rounded-full ${roleBadge.color}`}>
                   {roleBadge.label}
                 </span>

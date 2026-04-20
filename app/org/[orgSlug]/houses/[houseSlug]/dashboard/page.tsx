@@ -11,6 +11,10 @@ import {
   Eye,
   ExternalLink,
 } from 'lucide-react'
+import { StatCard } from '@/components/ui/StatCard'
+import { ThemeCard } from '@/components/ui/ThemeCard'
+import { ThemeBadge } from '@/components/ui/ThemeBadge'
+import { ThemeButton } from '@/components/ui/ThemeButton'
 
 interface HouseDashboardPageProps {
   params: {
@@ -62,18 +66,11 @@ export default async function HouseDashboardPage({ params }: HouseDashboardPageP
   }
 
   const stats = [
-    { name: 'Total Members', value: house._count.members, icon: Users, color: 'blue' },
-    { name: 'Events', value: house._count.events, icon: Calendar, color: 'green' },
-    { name: 'Tickets Sold', value: house._count.tickets, icon: Ticket, color: 'purple' },
-    { name: 'Engagement', value: '78%', icon: TrendingUp, color: 'orange' },
+    { name: 'Total Members', value: house._count.members, icon: 'Users', color: 'primary' as const },
+    { name: 'Events', value: house._count.events, icon: 'Calendar', color: 'secondary' as const },
+    { name: 'Tickets Sold', value: house._count.tickets, icon: 'Ticket', color: 'accent' as const },
+    { name: 'Engagement', value: '78%', icon: 'TrendingUp', color: 'primary' as const },
   ]
-
-  const colorClasses = {
-    blue: 'bg-blue-50 text-blue-600',
-    green: 'bg-green-50 text-green-600',
-    purple: 'bg-purple-50 text-purple-600',
-    orange: 'bg-orange-50 text-orange-600',
-  }
 
   return (
     <div className="space-y-6">
@@ -90,7 +87,7 @@ export default async function HouseDashboardPage({ params }: HouseDashboardPageP
         <Link
           href={`/portal/${params.houseSlug}/dashboard`}
           target="_blank"
-          className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-purple-600 bg-purple-50 rounded-lg hover:bg-purple-100 transition border border-purple-200"
+          className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-theme-accent bg-theme-accent/10 rounded-lg hover:bg-theme-accent/20 transition border border-theme-accent/20"
         >
           <Eye className="h-4 w-4" />
           View Member Portal
@@ -98,141 +95,226 @@ export default async function HouseDashboardPage({ params }: HouseDashboardPageP
         </Link>
       </div>
 
-      {/* Stats */}
+      {/* Stats - Using StatCard component with theme colors */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {stats.map((stat) => (
-          <div key={stat.name} className="bg-white rounded-xl border border-gray-200 p-6">
-            <div className="flex items-center justify-between">
-              <div className={`w-12 h-12 rounded-lg flex items-center justify-center ${colorClasses[stat.color as keyof typeof colorClasses]}`}>
-                <stat.icon className="h-6 w-6" />
-              </div>
-            </div>
-            <p className="text-3xl font-bold text-gray-900 mt-4">{stat.value}</p>
-            <p className="text-sm text-gray-500 mt-1">{stat.name}</p>
-          </div>
+          <StatCard
+            key={stat.name}
+            name={stat.name}
+            value={stat.value}
+            icon={stat.icon as any}
+            color={stat.color}
+          />
         ))}
       </div>
 
-      {/* Quick Actions */}
+      {/* Quick Actions - Using theme colors */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Link
+        <QuickActionCard
           href={`/org/${params.orgSlug}/houses/${params.houseSlug}/members`}
-          className="bg-white rounded-xl border border-gray-200 p-6 hover:shadow-lg transition group"
-        >
-          <Users className="h-8 w-8 text-blue-600 mb-3" />
-          <h3 className="font-semibold text-gray-900 group-hover:text-blue-600">Manage Members</h3>
-          <p className="text-sm text-gray-500 mt-1">View and manage house members</p>
-        </Link>
+          icon={Users}
+          title="Manage Members"
+          description="View and manage house members"
+          color="primary"
+        />
         
-        <Link
+        <QuickActionCard
           href={`/org/${params.orgSlug}/houses/${params.houseSlug}/events/create`}
-          className="bg-white rounded-xl border border-gray-200 p-6 hover:shadow-lg transition group"
-        >
-          <Calendar className="h-8 w-8 text-green-600 mb-3" />
-          <h3 className="font-semibold text-gray-900 group-hover:text-green-600">Create Event</h3>
-          <p className="text-sm text-gray-500 mt-1">Schedule a new event</p>
-        </Link>
+          icon={Calendar}
+          title="Create Event"
+          description="Schedule a new event"
+          color="secondary"
+        />
         
-        <Link
+        <QuickActionCard
           href={`/org/${params.orgSlug}/houses/${params.houseSlug}/tickets/create`}
-          className="bg-white rounded-xl border border-gray-200 p-6 hover:shadow-lg transition group"
-        >
-          <Ticket className="h-8 w-8 text-purple-600 mb-3" />
-          <h3 className="font-semibold text-gray-900 group-hover:text-purple-600">Create Ticket</h3>
-          <p className="text-sm text-gray-500 mt-1">Set up ticket types for events</p>
-        </Link>
+          icon={Ticket}
+          title="Create Ticket"
+          description="Set up ticket types for events"
+          color="accent"
+        />
       </div>
 
-      {/* Recent Members & Upcoming Events */}
+      {/* Recent Members & Upcoming Events using ThemeCard */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Recent Members */}
-        <div className="bg-white rounded-xl border border-gray-200">
-          <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-gray-900">Recent Members</h2>
-            <Link
-              href={`/org/${params.orgSlug}/houses/${params.houseSlug}/members`}
-              className="text-sm text-blue-600 hover:text-blue-700 flex items-center gap-1"
-            >
-              View all
-              <ArrowRight className="h-4 w-4" />
-            </Link>
-          </div>
-          <div className="divide-y divide-gray-100">
-            {house.members.length === 0 ? (
-              <p className="px-6 py-8 text-center text-gray-500">No members yet</p>
-            ) : (
-              house.members.map((member) => (
-                <div key={member.id} className="px-6 py-3 flex items-center gap-3">
-                  <div className="w-10 h-10 bg-gray-200 rounded-full flex items-center justify-center">
-                    {member.membership.user.image ? (
-                      <img src={member.membership.user.image} alt="" className="w-10 h-10 rounded-full" />
-                    ) : (
-                      <span className="text-gray-600 font-medium">
-                        {member.membership.user.name?.[0] || member.membership.user.email[0]}
-                      </span>
-                    )}
-                  </div>
-                  <div className="flex-1">
-                    <p className="text-sm font-medium text-gray-900">
-                      {member.membership.user.name || 'Unknown'}
-                    </p>
-                    <p className="text-xs text-gray-500">{member.membership.user.email}</p>
-                  </div>
-                  <span className={`text-xs px-2 py-1 rounded-full ${
-                    member.role === 'HOUSE_MANAGER' ? 'bg-blue-100 text-blue-800' :
-                    member.role === 'HOUSE_ADMIN' ? 'bg-purple-100 text-purple-800' :
-                    'bg-gray-100 text-gray-800'
-                  }`}>
-                    {member.role}
-                  </span>
+        <ThemeCard title="Recent Members" icon="Users" color="primary">
+          <div className="-mx-5 -mb-5">
+            <div className="px-5 pb-4">
+              <Link
+                href={`/org/${params.orgSlug}/houses/${params.houseSlug}/members`}
+                className="text-sm text-theme-primary hover:text-theme-secondary transition-colors"
+              >
+                View all members →
+              </Link>
+            </div>
+            <div className="divide-y divide-gray-100">
+              {house.members.length === 0 ? (
+                <div className="px-5 py-12 text-center">
+                  <Users className="h-12 w-12 text-gray-300 mx-auto mb-3" />
+                  <p className="text-gray-500">No members yet</p>
                 </div>
-              ))
-            )}
+              ) : (
+                house.members.map((member) => (
+                  <div key={member.id} className="px-5 py-3.5 flex items-center gap-3 hover:bg-gray-50 transition">
+                    <div className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 text-white text-sm font-medium bg-gradient-to-br from-theme-primary to-theme-secondary">
+                      {member.membership.user.image ? (
+                        <img src={member.membership.user.image} alt="" className="w-10 h-10 rounded-full" />
+                      ) : (
+                        member.membership.user.name?.[0] || member.membership.user.email[0].toUpperCase()
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-gray-900 truncate">
+                        {member.membership.user.name || 'Unknown'}
+                      </p>
+                      <p className="text-xs text-gray-500 truncate">{member.membership.user.email}</p>
+                    </div>
+                    <ThemeBadge 
+                      variant={
+                        member.role === 'HOUSE_MANAGER' ? 'secondary' :
+                        member.role === 'HOUSE_ADMIN' ? 'primary' : 'default'
+                      }
+                      size="sm"
+                    >
+                      {member.role === 'HOUSE_MANAGER' ? 'Manager' : 
+                       member.role === 'HOUSE_ADMIN' ? 'Admin' : 'Member'}
+                    </ThemeBadge>
+                  </div>
+                ))
+              )}
+            </div>
           </div>
-        </div>
+        </ThemeCard>
 
         {/* Upcoming Events */}
-        <div className="bg-white rounded-xl border border-gray-200">
-          <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-gray-900">Upcoming Events</h2>
-            <Link
-              href={`/org/${params.orgSlug}/houses/${params.houseSlug}/events/create`}
-              className="text-sm text-blue-600 hover:text-blue-700 flex items-center gap-1"
-            >
-              <Plus className="h-4 w-4" />
-              Create
-            </Link>
-          </div>
-          <div className="divide-y divide-gray-100">
-            {house.events.length === 0 ? (
-              <p className="px-6 py-8 text-center text-gray-500">No upcoming events</p>
-            ) : (
-              house.events.map((event) => (
-                <Link
-                  key={event.id}
-                  href={`/org/${params.orgSlug}/houses/${params.houseSlug}/events/${event.id}`}
-                  className="block px-6 py-3 hover:bg-gray-50 transition"
-                >
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-medium text-gray-900">{event.title}</p>
-                      <p className="text-xs text-gray-500">
-                        {new Date(event.startDate).toLocaleDateString()} at {' '}
-                        {new Date(event.startDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                      </p>
+        <ThemeCard title="Upcoming Events" icon="Calendar" color="secondary">
+          <div className="-mx-5 -mb-5">
+            <div className="px-5 pb-4">
+              <Link
+                href={`/org/${params.orgSlug}/houses/${params.houseSlug}/events/create`}
+                className="text-sm text-theme-primary hover:text-theme-secondary flex items-center gap-1"
+              >
+                <Plus className="h-3 w-3" />
+                Create Event
+              </Link>
+            </div>
+            <div className="divide-y divide-gray-100">
+              {house.events.length === 0 ? (
+                <div className="px-5 py-12 text-center">
+                  <Calendar className="h-12 w-12 text-gray-300 mx-auto mb-3" />
+                  <p className="text-gray-500 mb-3">No upcoming events</p>
+                  <Link
+                    href={`/org/${params.orgSlug}/houses/${params.houseSlug}/events/create`}
+                    className="inline-flex items-center gap-1 text-sm text-theme-primary hover:text-theme-secondary"
+                  >
+                    <Plus className="h-4 w-4" />
+                    Create your first event
+                  </Link>
+                </div>
+              ) : (
+                house.events.map((event) => (
+                  <Link
+                    key={event.id}
+                    href={`/org/${params.orgSlug}/houses/${params.houseSlug}/events/${event.id}`}
+                    className="block px-5 py-3.5 hover:bg-gray-50 transition"
+                  >
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        <p className="text-sm font-medium text-gray-900">{event.title}</p>
+                        <p className="text-xs text-gray-500 mt-0.5">
+                          {new Date(event.startDate).toLocaleDateString('en-US', { 
+                            month: 'short', 
+                            day: 'numeric',
+                            year: 'numeric'
+                          })} at{' '}
+                          {new Date(event.startDate).toLocaleTimeString('en-US', { 
+                            hour: 'numeric', 
+                            minute: '2-digit',
+                            hour12: true 
+                          })}
+                        </p>
+                      </div>
+                      <ThemeBadge 
+                        variant={event.status === 'PUBLISHED' ? 'success' : 'warning'} 
+                        size="sm"
+                      >
+                        {event.status}
+                      </ThemeBadge>
                     </div>
-                    <span className={`text-xs px-2 py-1 rounded-full ${
-                      event.status === 'PUBLISHED' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
-                    }`}>
-                      {event.status}
-                    </span>
-                  </div>
-                </Link>
-              ))
-            )}
+                  </Link>
+                ))
+              )}
+            </div>
           </div>
-        </div>
+        </ThemeCard>
       </div>
     </div>
+  )
+}
+
+// Quick Action Card Component with theme colors
+function QuickActionCard({ 
+  href, 
+  icon: Icon, 
+  title, 
+  description, 
+  color 
+}: { 
+  href: string
+  icon: any
+  title: string
+  description: string
+  color: 'primary' | 'secondary' | 'accent'
+}) {
+  const getBgClass = () => {
+    switch(color) {
+      case 'primary': return 'bg-theme-primary/10 group-hover:bg-theme-primary'
+      case 'secondary': return 'bg-theme-secondary/10 group-hover:bg-theme-secondary'
+      case 'accent': return 'bg-theme-accent/10 group-hover:bg-theme-accent'
+      default: return 'bg-theme-primary/10 group-hover:bg-theme-primary'
+    }
+  }
+
+  const getTextClass = () => {
+    switch(color) {
+      case 'primary': return 'text-theme-primary group-hover:text-white'
+      case 'secondary': return 'text-theme-secondary group-hover:text-white'
+      case 'accent': return 'text-theme-accent group-hover:text-white'
+      default: return 'text-theme-primary group-hover:text-white'
+    }
+  }
+
+  const getBorderClass = () => {
+    switch(color) {
+      case 'primary': return 'hover:border-theme-primary/30'
+      case 'secondary': return 'hover:border-theme-secondary/30'
+      case 'accent': return 'hover:border-theme-accent/30'
+      default: return 'hover:border-theme-primary/30'
+    }
+  }
+
+  const getTitleHoverClass = () => {
+    switch(color) {
+      case 'primary': return 'group-hover:text-theme-primary'
+      case 'secondary': return 'group-hover:text-theme-secondary'
+      case 'accent': return 'group-hover:text-theme-accent'
+      default: return 'group-hover:text-theme-primary'
+    }
+  }
+
+  return (
+    <Link
+      href={href}
+      className={`group bg-white rounded-xl border border-gray-200 p-6 hover:shadow-lg transition-all ${getBorderClass()}`}
+    >
+      <div className={`w-12 h-12 rounded-lg flex items-center justify-center transition-colors mb-3 ${getBgClass()}`}>
+        <Icon className={`h-6 w-6 transition-colors ${getTextClass()}`} />
+      </div>
+      <h3 className={`font-semibold text-gray-900 transition-colors ${getTitleHoverClass()}`}>
+        {title}
+      </h3>
+      <p className="text-sm text-gray-500 mt-1">{description}</p>
+    </Link>
   )
 }

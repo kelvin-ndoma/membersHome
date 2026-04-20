@@ -106,56 +106,61 @@ export async function PATCH(
 
     // Update plan
     const updatedPlan = await prisma.$transaction(async (tx) => {
+      // Build update data
+      const updateData: any = {}
+      if (data.name !== undefined) updateData.name = data.name
+      if (data.description !== undefined) updateData.description = data.description
+      if (data.type !== undefined) updateData.type = data.type
+      if (data.features !== undefined) updateData.features = data.features
+      if (data.isPublic !== undefined) updateData.isPublic = data.isPublic
+      if (data.requiresApproval !== undefined) updateData.requiresApproval = data.requiresApproval
+      if (data.status !== undefined) updateData.status = data.status
+      if (data.settings !== undefined) updateData.settings = data.settings
+
       // Update plan basic info
       const planUpdate = await tx.membershipPlan.update({
         where: { id: plan.id },
-        data: {
-          name: data.name,
-          description: data.description,
-          type: data.type,
-          features: data.features,
-          isPublic: data.isPublic,
-          requiresApproval: data.requiresApproval,
-          status: data.status,
-        }
+        data: updateData
       })
 
-      // Handle prices
-      const existingPriceIds = plan.prices.map(p => p.id)
-      const updatedPriceIds = data.prices.filter((p: any) => p.id).map((p: any) => p.id)
-      
-      // Delete removed prices
-      const pricesToDelete = existingPriceIds.filter(id => !updatedPriceIds.includes(id))
-      if (pricesToDelete.length > 0) {
-        await tx.planPrice.deleteMany({
-          where: { id: { in: pricesToDelete } }
-        })
-      }
+      // Handle prices if provided
+      if (data.prices) {
+        const existingPriceIds = plan.prices.map(p => p.id)
+        const updatedPriceIds = data.prices.filter((p: any) => p.id).map((p: any) => p.id)
+        
+        // Delete removed prices
+        const pricesToDelete = existingPriceIds.filter(id => !updatedPriceIds.includes(id))
+        if (pricesToDelete.length > 0) {
+          await tx.planPrice.deleteMany({
+            where: { id: { in: pricesToDelete } }
+          })
+        }
 
-      // Update or create prices
-      for (const price of data.prices) {
-        if (price.id) {
-          // Update existing
-          await tx.planPrice.update({
-            where: { id: price.id },
-            data: {
-              billingFrequency: price.billingFrequency,
-              amount: price.amount,
-              currency: price.currency,
-              setupFee: price.setupFee,
-            }
-          })
-        } else {
-          // Create new
-          await tx.planPrice.create({
-            data: {
-              billingFrequency: price.billingFrequency,
-              amount: price.amount,
-              currency: price.currency,
-              setupFee: price.setupFee,
-              membershipPlanId: plan.id,
-            }
-          })
+        // Update or create prices
+        for (const price of data.prices) {
+          if (price.id) {
+            // Update existing
+            await tx.planPrice.update({
+              where: { id: price.id },
+              data: {
+                billingFrequency: price.billingFrequency,
+                amount: price.amount,
+                currency: price.currency,
+                // setupFee removed
+              }
+            })
+          } else {
+            // Create new
+            await tx.planPrice.create({
+              data: {
+                billingFrequency: price.billingFrequency,
+                amount: price.amount,
+                currency: price.currency,
+                membershipPlanId: plan.id,
+                // setupFee removed
+              }
+            })
+          }
         }
       }
 
